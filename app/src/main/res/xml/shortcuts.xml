@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="error_log"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_log">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.khereba1.tubelite"
+            android:targetClass="com.khereba1.app.LogActivity" />
+    </shortcut>
+</shortcuts>

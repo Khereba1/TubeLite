@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name" translatable="false">TubeLite</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="stop">Stop</string>
+    <string name="notif_channel">Background playback</string>
+    <string name="shortcut_log">Error log</string>
+    <string name="log_empty">The log is empty.</string>
+    <string name="load_error">Page failed to load. Check your connection.</string>
+</resources>

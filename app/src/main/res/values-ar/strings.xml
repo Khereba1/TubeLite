@@ -1,0 +1,9 @@
+<resources>
+    <string name="play">تشغيل</string>
+    <string name="pause">إيقاف مؤقت</string>
+    <string name="stop">إغلاق</string>
+    <string name="notif_channel">التشغيل في الخلفية</string>
+    <string name="shortcut_log">سجل الأخطاء</string>
+    <string name="log_empty">السجل فاضي.</string>
+    <string name="load_error">الصفحة مفتحتش. اتأكد من الإنترنت.</string>
+</resources>
