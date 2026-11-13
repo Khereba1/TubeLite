@@ -12,6 +12,9 @@ object AdBlock {
         "googletagservices.com",
         "adservice.google.com",
         "2mdn.net",
+        "imasdk.googleapis.com",
+        "google-analytics.com",
+        "googletagmanager.com",
     )
 
     private val blockedPaths = listOf(

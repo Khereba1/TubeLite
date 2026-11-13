@@ -67,6 +67,7 @@ jobs:
           name: app-release
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+          retention-days: 3
 
       # Stable download link for the phone: the Releases page (tag "latest")
       - name: Publish to Releases

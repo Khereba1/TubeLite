@@ -6,7 +6,7 @@ The family-wide rules are in STANDARD.md (ask the owner to attach it if missing)
 ## What this is
 A private WebView wrapper around m.youtube.com for ONE owner who signs into his own Google account in it.
 Features: background playback (foreground service + media notification), ad blocking (network rules + bundled page script),
-fullscreen video, opens youtube links. Android app, Kotlin (View-based, no Compose UI), source package `com.khereba1.app`,
+fullscreen video (swipe gestures, keep-screen-on), Picture-in-Picture (Home while fullscreen), opens youtube links. Android app, Kotlin (View-based, no Compose UI), source package `com.khereba1.app`,
 applicationId `com.khereba1.tubelite`. minSdk 29, compileSdk 35. UI languages: Arabic + English (strings only: notification, toasts).
 Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compiled or run by the AI that wrote it.
 
@@ -26,7 +26,7 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
 - `YtWebView.kt`: overrides `onWindowVisibilityChanged` to always say VISIBLE (needed for background audio). Do not call `webView.onPause()`.
 - `assets/inject.js` (added via `addDocumentStartJavaScript`, fallback: injected in `onPageStarted`):
   fake `document.hidden/visibilityState`; deletes `adPlacements/playerAds/adSlots` from `JSON.parse` / `Response.json` / `ytInitialPlayerResponse`;
-  CSS hides ad UI; every 500 ms skips an ad if `.ad-showing`; every 1 s reports play state to `TubeBridge`; `window.__tubeCmd(play|pause|toggle)`.
+  CSS hides ad UI; skips an ad if `.ad-showing` (on media events + 1 s safety timer); reports play state to `TubeBridge` (on media events + 3 s safety timer); `window.__tubeCmd(play|pause|toggle)`.
 - `AdBlock.kt`: empty answer for ad hosts and ad-ping paths (`/pagead/`, `/api/stats/ads`, `/ptracking`, ...).
 - `PlaybackService.kt`: foreground service (type mediaPlayback), MediaSession, notification with play/pause/stop. Controlled via
   `PlaybackService.instance.update()` and `PlaybackService.controller` (set by MainActivity). Auto-stops 5 min after pause.
@@ -40,6 +40,7 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
 - YtWebView.kt: WebView that always reports visible
 - AdBlock.kt: network-level ad rules
 - PlaybackService.kt: background playback service + notification
+- GestureFrame.kt: fullscreen container; vertical swipe = brightness (left) / volume (right)
 - LogActivity.kt: shows AppLog
 - assets/inject.js: bundled page script
 - res/xml/shortcuts.xml: launcher shortcut to LogActivity

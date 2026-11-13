@@ -2,19 +2,24 @@ package com.khereba1.app
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
+import android.util.Rational
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -53,6 +58,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var root: FrameLayout
     private lateinit var webView: YtWebView
     private var customView: View? = null
+    private var customContainer: GestureFrame? = null
+    private var volumeAccum = 0f
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     private val handler = Handler(Looper.getMainLooper())
     private val stopServiceTask = Runnable { stopService(Intent(this, PlaybackService::class.java)) }
@@ -105,6 +112,18 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         webView.loadUrl(resolveStartUrl(intent))
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // Fullscreen video + Home button = Picture-in-Picture. Otherwise audio just continues in the background.
+        if (customView != null) {
+            try {
+                enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build())
+            } catch (e: Throwable) {
+                AppLog.log("PIP", "enter failed", e)
+            }
+        }
     }
 
     override fun onPause() {
@@ -251,13 +270,24 @@ class MainActivity : ComponentActivity() {
 
     private fun hideCustomView() {
         val v = customView ?: return
-        root.removeView(v)
+        val container = customContainer
+        if (container != null) {
+            container.removeView(v)
+            root.removeView(container)
+        } else {
+            root.removeView(v)
+        }
+        customContainer = null
         customView = null
         customViewCallback?.onCustomViewHidden()
         customViewCallback = null
         val c = WindowCompat.getInsetsController(window, window.decorView)
         c.show(WindowInsetsCompat.Type.systemBars())
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val lp = window.attributes
+        lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        window.attributes = lp
     }
 
     private fun showCustomView(view: View, callback: WebChromeClient.CustomViewCallback?) {
@@ -268,14 +298,49 @@ class MainActivity : ComponentActivity() {
         customView = view
         customViewCallback = callback
         view.setBackgroundColor(Color.BLACK)
-        root.addView(
+        val container = GestureFrame(this) { left, delta -> adjustFromGesture(left, delta) }
+        container.setBackgroundColor(Color.BLACK)
+        container.addView(
             view,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        customContainer = container
+        root.addView(
+            container,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         )
         val c = WindowCompat.getInsetsController(window, window.decorView)
         c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         c.hide(WindowInsetsCompat.Type.systemBars())
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    /** Vertical swipe in fullscreen: left half = brightness, right half = volume. */
+    private fun adjustFromGesture(left: Boolean, delta: Float) {
+        try {
+            if (left) {
+                val lp = window.attributes
+                var b = lp.screenBrightness
+                if (b < 0f) {
+                    b = Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128) / 255f
+                }
+                lp.screenBrightness = (b + delta).coerceIn(0.02f, 1f)
+                window.attributes = lp
+            } else {
+                val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                volumeAccum += delta * max * 1.5f
+                val steps = volumeAccum.toInt()
+                if (steps != 0) {
+                    volumeAccum -= steps
+                    val cur = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    am.setStreamVolume(AudioManager.STREAM_MUSIC, (cur + steps).coerceIn(0, max), AudioManager.FLAG_SHOW_UI)
+                }
+            }
+        } catch (e: Throwable) {
+            AppLog.log("GESTURE", "adjust failed", e)
+        }
     }
 
     // ---------------------------------------------------------------- WebView clients

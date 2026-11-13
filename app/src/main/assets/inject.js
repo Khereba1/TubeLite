@@ -97,7 +97,6 @@
       }
     } catch (e) {}
   }
-  setInterval(skipAd, 500);
 
   /* ---- 3) app bridge ---- */
   var lastState = '';
@@ -116,7 +115,13 @@
       if (s !== lastState) { lastState = s; window.TubeBridge.postMessage(s); }
     } catch (e) {}
   }
-  setInterval(report, 1000);
+  // Media events instead of constant polling: much lighter on CPU and battery.
+  function onMedia() { report(); skipAd(); }
+  ['play', 'playing', 'pause', 'ended', 'emptied', 'loadstart'].forEach(function (t) {
+    document.addEventListener(t, onMedia, true);
+  });
+  setInterval(report, 3000); // safety net: title changes, missed events
+  setInterval(skipAd, 1000); // safety net: ads that appear without a media event
 
   window.__tubeCmd = function (c) {
     try {
