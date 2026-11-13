@@ -54,10 +54,10 @@ The owner has only a phone. There is NO local build. Code is pushed from Termux 
 ## REQUIRED answer format (the owner has only a phone + Termux)
 1. Briefly say what you changed and why (plain language; the owner writes Egyptian Arabic mixed with English terms, reply in the same).
 2. Deliver ONE zip containing only the changed/new files, complete (never snippets or diffs), with paths relative to the project root.
-   Name it `fixN.zip` (fix1, fix2, ...). If you cannot create a zip, give each file in full in its own code block with its path, and say so.
+   Name it `tubeN.zip` (tube1, tube2, ...). If you cannot create a zip, give each file in full in its own code block with its path, and say so.
 3. Raise `versionCode` (+1) and `versionName` in `app/build.gradle.kts` for every functional change, and include that file.
 4. Give the install command, ready to copy:
-   `cd ~/tubelite && unzip -o "$(ls -t ~/storage/downloads/fixN*.zip | head -1)" -d . && git add . && git commit -m "short message" && git push`
+   `cd ~/tubelite && unzip -o "$(ls -t ~/storage/downloads/tubeN*.zip | head -1)" -d . && git add . && git commit -m "short message" && git push`
    (GitHub repo: Khereba1/TubeLite, APK: github.com/Khereba1/TubeLite/releases/tag/latest)
 5. Say honestly that nothing was compiled or tested, and what to check first on the phone.
 6. If the build fails, the owner sends lines containing `e: ` from the Actions log; fix only those.

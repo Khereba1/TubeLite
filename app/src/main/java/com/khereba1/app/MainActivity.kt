@@ -141,7 +141,7 @@ class MainActivity : ComponentActivity() {
         s.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         s.safeBrowsingEnabled = true
         // Look like normal mobile Chrome (Google blocks sign-in from user agents that say "wv").
-        s.userAgentString = WebSettings.getDefaultUserAgentString(this)
+        s.userAgentString = WebSettings.getDefaultUserAgent(this)
             .replace("; wv", "")
             .replace("Version/4.0 ", "")
         // Do not send the X-Requested-With header (it contains this app's package name).
