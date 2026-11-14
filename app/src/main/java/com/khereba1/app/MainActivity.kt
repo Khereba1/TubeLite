@@ -680,8 +680,10 @@ class MainActivity : ComponentActivity() {
         c.show(WindowInsetsCompat.Type.systemBars())
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        WindowCompat.setDecorFitsSystemWindows(window, true)
         val lp = window.attributes
         lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
         window.attributes = lp
     }
 
@@ -713,6 +715,11 @@ class MainActivity : ComponentActivity() {
         c.hide(WindowInsetsCompat.Type.systemBars())
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Let the video extend into the camera cutout (punch hole) instead of leaving a black strip beside it.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val wlp = window.attributes
+        wlp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        window.attributes = wlp
     }
 
     /** Vertical swipe in fullscreen: left half = brightness, right half = volume. */
