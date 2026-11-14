@@ -2,6 +2,7 @@ package com.khereba1.app
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
@@ -91,6 +92,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var miniTitle: TextView
     private lateinit var miniToggle: ImageButton
     private var playerExpanded = false
+    private lateinit var qualityPill: TextView
+    private var quality = "auto"
+    private val qualityValues = arrayOf("auto", "small", "medium", "large", "hd720", "hd1080")
 
     private var customView: View? = null
     private var customContainer: GestureFrame? = null
@@ -117,6 +121,8 @@ class MainActivity : ComponentActivity() {
         userAgent = WebSettings.getDefaultUserAgent(this)
             .replace("; wv", "")
             .replace("Version/4.0 ", "")
+        quality = getSharedPreferences("tubelite_prefs", Context.MODE_PRIVATE).getString("quality", "auto") ?: "auto"
+        if (quality !in qualityValues) quality = "auto"
         bridgeSupported = try {
             WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
         } catch (e: Throwable) {
@@ -207,6 +213,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         browseView.onResume()
+        refreshPlayer()
     }
 
     override fun onDestroy() {
@@ -281,7 +288,9 @@ class MainActivity : ComponentActivity() {
                 )
             }
             if (injectScript.isNotEmpty() && documentStartSupported) {
-                WebViewCompat.addDocumentStartJavaScript(wv, "window.__tubeRole='" + role + "';\n" + injectScript, origins)
+                WebViewCompat.addDocumentStartJavaScript(
+                    wv, "window.__tubeRole='" + role + "';window.__tubeQuality='" + quality + "';\n" + injectScript, origins
+                )
             }
         } catch (e: Throwable) {
             AppLog.log("INJECT", "Bridge/script setup failed", e)
@@ -305,6 +314,24 @@ class MainActivity : ComponentActivity() {
         val lp = FrameLayout.LayoutParams((56 * dp).toInt(), (28 * dp).toInt(), Gravity.TOP or Gravity.CENTER_HORIZONTAL)
         lp.topMargin = (4 * dp).toInt()
         layer.addView(pill, lp)
+
+        qualityPill = TextView(this)
+        qualityPill.setTextColor(Color.WHITE)
+        qualityPill.textSize = 12f
+        qualityPill.gravity = Gravity.CENTER
+        qualityPill.setPadding((10 * dp).toInt(), (4 * dp).toInt(), (10 * dp).toInt(), (4 * dp).toInt())
+        val qbg = GradientDrawable()
+        qbg.setColor(Color.parseColor("#99000000"))
+        qbg.cornerRadius = 16 * dp
+        qualityPill.background = qbg
+        qualityPill.setOnClickListener { showQualityDialog() }
+        updateQualityPill()
+        val qlp = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.LEFT
+        )
+        qlp.topMargin = (4 * dp).toInt()
+        qlp.leftMargin = (8 * dp).toInt()
+        layer.addView(qualityPill, qlp)
         return layer
     }
 
@@ -386,12 +413,15 @@ class MainActivity : ComponentActivity() {
         miniBar.visibility = View.GONE
         playerLayer.visibility = View.VISIBLE
         if (playerLayer.translationY > root.height) playerLayer.translationY = root.height.toFloat()
-        playerLayer.animate().translationY(0f).setDuration(220).start()
+        playerLayer.animate().translationY(0f).setDuration(220)
+            .withEndAction { if (playerExpanded) browseView.visibility = View.INVISIBLE } // hidden page = no overlapping previews
+            .start()
     }
 
     private fun minimizePlayer() {
         if (playerView == null || !playerExpanded) return
         playerExpanded = false
+        browseView.visibility = View.VISIBLE
         miniBar.visibility = View.VISIBLE
         playerLayer.animate().translationY(root.height.toFloat()).setDuration(220)
             .withEndAction { if (!playerExpanded) playerLayer.translationY = 20000f }
@@ -412,6 +442,7 @@ class MainActivity : ComponentActivity() {
         playerLayer.animate().cancel()
         playerLayer.translationY = 0f
         playerLayer.visibility = View.GONE
+        browseView.visibility = View.VISIBLE
         miniBar.visibility = View.GONE
         isPlaying = false
         lastArtId = ""
@@ -425,6 +456,58 @@ class MainActivity : ComponentActivity() {
         runOnUiThread {
             playerView?.evaluateJavascript("window.__tubeCmd&&window.__tubeCmd('" + cmd + "')", null)
         }
+    }
+
+    // ---------------------------------------------------------------- quality + surface refresh
+
+    private fun qualityLabel(q: String): String {
+        return when (q) {
+            "small" -> "240p"
+            "medium" -> "360p"
+            "large" -> "480p"
+            "hd720" -> "720p"
+            "hd1080" -> "1080p"
+            else -> getString(R.string.quality_auto)
+        }
+    }
+
+    private fun updateQualityPill() {
+        qualityPill.text = qualityLabel(quality)
+    }
+
+    private fun setQuality(q: String) {
+        if (q !in qualityValues) return
+        quality = q
+        getSharedPreferences("tubelite_prefs", Context.MODE_PRIVATE).edit().putString("quality", q).apply()
+        updateQualityPill()
+        playerView?.evaluateJavascript("window.__tubeSetQuality&&window.__tubeSetQuality('" + q + "')", null)
+    }
+
+    private fun showQualityDialog() {
+        val labels = Array(qualityValues.size) { i -> qualityLabel(qualityValues[i]) }
+        val checked = qualityValues.indexOf(quality).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.quality_title)
+            .setSingleChoiceItems(labels, checked) { dialog, which ->
+                setQuality(qualityValues[which])
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    /** After returning to the app the video surface can show stale frames (sound is fine): nudge it to redraw. */
+    private fun refreshPlayer() {
+        val pv = playerView ?: return
+        handler.postDelayed({
+            if (playerView === pv) {
+                pv.invalidate()
+                pv.evaluateJavascript(
+                    "(function(){var v=document.querySelector('video');" +
+                        "if(v&&!v.paused){v.style.display='none';void v.offsetHeight;v.style.display='';}})()",
+                    null
+                )
+            }
+        }, 300)
     }
 
     // ---------------------------------------------------------------- messages from pages
@@ -531,7 +614,12 @@ class MainActivity : ComponentActivity() {
 
     private fun routeIntent(intent: Intent?) {
         val url = resolveStartUrl(intent)
-        if (isWatchUrl(url)) openVideo(url) else browseView.loadUrl(url)
+        if (isWatchUrl(url)) {
+            openVideo(url)
+        } else {
+            browseView.loadUrl(url)
+            if (playerView != null) minimizePlayer()
+        }
     }
 
     private fun openExternal(uri: Uri) {
@@ -661,12 +749,17 @@ class MainActivity : ComponentActivity() {
             return null
         }
 
+        override fun onPageFinished(view: WebView, url: String?) {
+            super.onPageFinished(view, url)
+            if (role == "player") view.evaluateJavascript("window.__tubeQuality='" + quality + "'", null)
+        }
+
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
             super.onPageStarted(view, url, favicon)
             if (!documentStartSupported && injectScript.isNotEmpty() && url != null &&
                 url.startsWith("https://m.youtube.com")
             ) {
-                view.evaluateJavascript("window.__tubeRole='" + role + "';\n" + injectScript, null)
+                view.evaluateJavascript("window.__tubeRole='" + role + "';window.__tubeQuality='" + quality + "';\n" + injectScript, null)
             }
         }
 

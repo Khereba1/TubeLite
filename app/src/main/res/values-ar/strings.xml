@@ -9,4 +9,6 @@
     <string name="shortcut_log">سجل الأخطاء</string>
     <string name="log_empty">السجل فاضي.</string>
     <string name="load_error">الصفحة مفتحتش. اتأكد من الإنترنت.</string>
+    <string name="quality_title">جودة الفيديو</string>
+    <string name="quality_auto">تلقائي</string>
 </resources>

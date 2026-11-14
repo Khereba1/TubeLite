@@ -10,4 +10,6 @@
     <string name="shortcut_log">Error log</string>
     <string name="log_empty">The log is empty.</string>
     <string name="load_error">Page failed to load. Check your connection.</string>
+    <string name="quality_title">Video quality</string>
+    <string name="quality_auto">Auto</string>
 </resources>

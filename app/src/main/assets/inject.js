@@ -112,7 +112,46 @@
     } catch (err) {}
   }, true);
 
+  /* ---- browse page: no autoplaying feed previews (they overlapped the player and waste battery); Shorts still play ---- */
+  if (role === 'browse') {
+    try {
+      var origPlay = HTMLMediaElement.prototype.play;
+      HTMLMediaElement.prototype.play = function () {
+        if (!window.TubeBridge || location.pathname.indexOf('/shorts') === 0) return origPlay.apply(this, arguments);
+        try { this.pause(); } catch (e) {}
+        return Promise.resolve();
+      };
+    } catch (e) {}
+  }
+
   if (role !== 'player') return;
+
+  /* ---- player: fixed video quality chosen in the app (window.__tubeQuality = auto | small | medium | large | hd720 | hd1080) ---- */
+  var qualAppliedId = '';
+  function curId() {
+    try { return new URL(location.href).searchParams.get('v') || ''; } catch (e) { return ''; }
+  }
+  function applyQuality(explicit) {
+    try {
+      var q = window.__tubeQuality || 'auto';
+      var p = document.querySelector('.html5-video-player') || document.getElementById('movie_player');
+      if (!p || !p.setPlaybackQualityRange) return;
+      var id = curId();
+      if (!explicit && (id === '' || id === qualAppliedId)) return;
+      if (q === 'auto') {
+        if (explicit) p.setPlaybackQualityRange('tiny', 'highres');
+      } else {
+        p.setPlaybackQualityRange(q, q);
+        if (p.setPlaybackQuality) p.setPlaybackQuality(q);
+      }
+      qualAppliedId = id;
+      if (!explicit) setTimeout(function () { applyQuality(true); }, 2000); // YouTube sometimes resets it
+    } catch (e) {}
+  }
+  window.__tubeSetQuality = function (q) {
+    window.__tubeQuality = q;
+    applyQuality(true);
+  };
 
   /* ---- player: skip ads that still get through ---- */
   function skipAd() {
@@ -158,9 +197,9 @@
   // Media events instead of constant polling: light on CPU and battery.
   ['play', 'playing', 'pause', 'ended', 'emptied', 'loadstart', 'loadedmetadata', 'durationchange', 'seeked', 'ratechange']
     .forEach(function (t) {
-      document.addEventListener(t, function () { report(true); skipAd(); }, true);
+      document.addEventListener(t, function () { report(true); skipAd(); applyQuality(false); }, true);
     });
-  setInterval(report, 3000, false); // safety net: title changes, missed events
+  setInterval(function () { report(false); applyQuality(false); }, 3000); // safety net: title changes, missed events
   setInterval(skipAd, 1000);        // safety net: ads that appear without a media event
 
   /* ---- player: commands from the app ---- */
