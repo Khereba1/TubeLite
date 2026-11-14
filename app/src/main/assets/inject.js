@@ -182,15 +182,38 @@
     } catch (e) {}
   }
 
-  /* ---- player: report page direction ("dir|rtl" / "dir|ltr") so the app can place its quality button over the site's "more" button ---- */
+  /* ---- player: report whether the page is mirrored (Arabic UI): "dir|rtl|how" / "dir|ltr|how" ----
+     The app uses it to put its quality button over the site's "more" button (right on LTR pages, left on RTL pages).
+     Layout is checked first (the YouTube logo is the widest link in the 64px top strip; on the right half = mirrored),
+     then the page language, then dir attributes. "how" only helps debugging (it goes to the in-app log). */
   var lastDir = '';
+  function detectRtl() {
+    try {
+      var w = window.innerWidth || document.documentElement.clientWidth || 0;
+      var els = document.querySelectorAll('a, button, [role="button"], ytm-home-logo');
+      var bestW = 0, bestC = -1;
+      for (var i = 0; i < els.length; i++) {
+        var r = els[i].getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0 || r.top < -2 || r.bottom > 64 || r.width > w * 0.6) continue;
+        if (r.width > bestW) { bestW = r.width; bestC = r.left + r.width / 2; }
+      }
+      if (w > 0 && bestW >= 60) return { rtl: bestC > w / 2, how: 'layout' };
+    } catch (e) {}
+    try {
+      var lang = (document.documentElement.getAttribute('lang') || '').toLowerCase();
+      if (/^(ar|he|fa|ur|ps|sd|ug|yi|dv)(-|_|$)/.test(lang)) return { rtl: true, how: 'lang' };
+      var da = (document.documentElement.getAttribute('dir') || (document.body && document.body.getAttribute('dir')) || '').toLowerCase();
+      if (da === 'rtl') return { rtl: true, how: 'dir' };
+      if (document.body && (getComputedStyle(document.body).direction || '').toLowerCase() === 'rtl') return { rtl: true, how: 'css' };
+    } catch (e) {}
+    return { rtl: false, how: 'default' };
+  }
   function reportDir() {
     try {
       if (!window.TubeBridge) return;
-      var d = (document.documentElement.getAttribute('dir') || '').toLowerCase();
-      if (d !== 'rtl' && d !== 'ltr') d = (getComputedStyle(document.documentElement).direction || 'ltr').toLowerCase();
-      d = d === 'rtl' ? 'rtl' : 'ltr';
-      if (d !== lastDir) { lastDir = d; window.TubeBridge.postMessage('dir|' + d); }
+      var r = detectRtl();
+      var msg = 'dir|' + (r.rtl ? 'rtl' : 'ltr') + '|' + r.how;
+      if (msg !== lastDir) { lastDir = msg; window.TubeBridge.postMessage(msg); }
     } catch (e) {}
   }
   document.addEventListener('DOMContentLoaded', reportDir);
@@ -198,7 +221,7 @@
   // Media events instead of constant polling: light on CPU and battery.
   ['play', 'playing', 'pause', 'ended', 'emptied', 'loadstart', 'loadedmetadata', 'durationchange', 'seeked', 'ratechange']
     .forEach(function (t) {
-      document.addEventListener(t, function () { report(true); skipAd(); applyQuality(false); }, true);
+      document.addEventListener(t, function () { report(true); skipAd(); applyQuality(false); reportDir(); }, true);
     });
   setInterval(function () { report(false); applyQuality(false); reportDir(); }, 3000); // safety net: title changes, missed events
   setInterval(skipAd, 1000);        // safety net: ads that appear without a media event

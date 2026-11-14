@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var miniToggle: ImageButton
     private var playerExpanded = false
     private lateinit var qualityBtn: ImageButton
+    private var pageRtl: Boolean? = null
     private var quality = "auto"
     private val qualityValues = arrayOf("auto", "tiny", "small", "medium", "large", "hd720", "hd1080")
 
@@ -346,7 +347,9 @@ class MainActivity : ComponentActivity() {
     }
 
     /** The page tells us if YouTube is shown right-to-left (Arabic): then its "more" button is on the left. */
-    private fun applyDirection(rtl: Boolean) {
+    private fun applyDirection(rtl: Boolean, how: String) {
+        if (pageRtl != rtl) AppLog.log("DIR", "page direction: " + (if (rtl) "rtl" else "ltr") + " (" + how + ")")
+        pageRtl = rtl
         val lp = qualityBtn.layoutParams as FrameLayout.LayoutParams
         lp.gravity = Gravity.TOP or (if (rtl) Gravity.LEFT else Gravity.RIGHT)
         qualityBtn.layoutParams = lp
@@ -537,7 +540,10 @@ class MainActivity : ComponentActivity() {
         when {
             msg.startsWith("open|") -> if (role == "browse") openVideo(msg.substring(5))
             msg.startsWith("browse|") -> if (role == "player") openInBrowse(msg.substring(7), true)
-            msg.startsWith("dir|") -> if (role == "player") applyDirection(msg.substring(4) == "rtl")
+            msg.startsWith("dir|") -> if (role == "player") {
+                val parts = msg.substring(4).split("|")
+                applyDirection(parts[0] == "rtl", if (parts.size > 1) parts[1] else "")
+            }
             role == "player" -> onPlayState(msg)
         }
     }

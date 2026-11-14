@@ -15,7 +15,7 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
 2. NEVER strip or rewrite Content-Security-Policy, and NEVER proxy page requests through app code.
 3. NEVER use `addJavascriptInterface`. The only app<->page channel is `WebViewCompat.addWebMessageListener("TubeBridge")`,
    restricted to https://m.youtube.com and https://www.youtube.com. It accepts ONLY short text messages: the player state
-   "<1|0>|<videoId>|<posMs>|<durMs>|<title>", "open|<watch url>" (browse page), "browse|<youtube url>" (player page) and "dir|ltr" / "dir|rtl" (player page).
+   "<1|0>|<videoId>|<posMs>|<durMs>|<title>", "open|<watch url>" (browse page), "browse|<youtube url>" (player page) and "dir|ltr|<how>" / "dir|rtl|<how>" (player page; <how> = layout/lang/dir/css/default, logged as "DIR" in the in-app log).
    Every URL is re-validated in Kotlin (https + youtube host) before use, and commands to the page go through COMMAND_REGEX.
 4. NEVER expose cookies, tokens or any account data to JS or to any file/log. No `getCookie` helper.
 5. Main-frame navigation is limited to youtube.com / google.com subdomains over https (`isAllowedHost` in MainActivity.kt); everything else goes to the external browser or is blocked.
