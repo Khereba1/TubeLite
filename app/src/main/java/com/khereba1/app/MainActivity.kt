@@ -11,7 +11,9 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
@@ -296,16 +298,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun roundIconButton(iconRes: Int, description: String, onClick: () -> Unit): ImageButton {
-        val dp = resources.displayMetrics.density
+    private fun iconButton(
+        iconRes: Int, description: String, bg: Drawable, padH: Int, padV: Int, onClick: () -> Unit
+    ): ImageButton {
         val b = ImageButton(this)
         b.setImageResource(iconRes)
         b.contentDescription = description
         b.scaleType = ImageView.ScaleType.FIT_CENTER
-        b.setPadding((8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt())
-        val bg = GradientDrawable()
-        bg.shape = GradientDrawable.OVAL
-        bg.setColor(Color.parseColor("#99000000")) // dark round background: visible on light and dark pages
+        b.setPadding(padH, padV, padH, padV)
         b.background = bg
         b.setOnClickListener { onClick() }
         return b
@@ -316,27 +316,32 @@ class MainActivity : ComponentActivity() {
         val layer = FrameLayout(this)
         layer.setBackgroundColor(Color.BLACK)
         layer.visibility = View.GONE
+        val dark = Color.parseColor("#212121") // solid, so nothing shows through
 
-        // Two round buttons in the empty middle of YouTube's top bar (56dp tall): minimize + video quality.
-        val size = (40 * dp).toInt()
-        val controls = LinearLayout(this)
-        controls.orientation = LinearLayout.HORIZONTAL
-        controls.addView(
-            roundIconButton(R.drawable.ic_minimize, getString(R.string.minimize)) { minimizePlayer() },
-            LinearLayout.LayoutParams(size, size)
-        )
-        val qlp = LinearLayout.LayoutParams(size, size)
-        qlp.leftMargin = (8 * dp).toInt()
-        controls.addView(
-            roundIconButton(R.drawable.ic_quality, getString(R.string.quality_title)) { showQualityDialog() },
-            qlp
-        )
-        val clp = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-            Gravity.TOP or Gravity.CENTER_HORIZONTAL
-        )
-        clp.topMargin = (8 * dp).toInt()
-        layer.addView(controls, clp)
+        // Minimize: a clear pill in the middle of YouTube's top bar (the bar is 56dp tall, the middle is empty).
+        val pillBg = GradientDrawable()
+        pillBg.setColor(dark)
+        pillBg.cornerRadius = 17 * dp
+        val pill = iconButton(
+            R.drawable.ic_minimize, getString(R.string.minimize), pillBg, (10 * dp).toInt(), (6 * dp).toInt()
+        ) { minimizePlayer() }
+        val plp = FrameLayout.LayoutParams((64 * dp).toInt(), (34 * dp).toInt(), Gravity.TOP or Gravity.CENTER_HORIZONTAL)
+        plp.topMargin = (11 * dp).toInt()
+        layer.addView(pill, plp)
+
+        // Quality: a round button placed exactly over the site's useless "more" (three dots) button at the top right.
+        // The view is 48dp (same touch area as the site button), the visible circle is 40dp.
+        val circle = GradientDrawable()
+        circle.shape = GradientDrawable.OVAL
+        circle.setColor(dark)
+        val qualityBtn = iconButton(
+            R.drawable.ic_quality, getString(R.string.quality_title),
+            InsetDrawable(circle, (4 * dp).toInt()), (12 * dp).toInt(), (12 * dp).toInt()
+        ) { showQualityDialog() }
+        val qlp = FrameLayout.LayoutParams((48 * dp).toInt(), (48 * dp).toInt(), Gravity.TOP or Gravity.RIGHT)
+        qlp.topMargin = (4 * dp).toInt()
+        qlp.rightMargin = (4 * dp).toInt()
+        layer.addView(qualityBtn, qlp)
         return layer
     }
 
