@@ -414,7 +414,15 @@ class MainActivity : ComponentActivity() {
         playerLayer.visibility = View.VISIBLE
         if (playerLayer.translationY > root.height) playerLayer.translationY = root.height.toFloat()
         playerLayer.animate().translationY(0f).setDuration(220)
-            .withEndAction { if (playerExpanded) browseView.visibility = View.INVISIBLE } // hidden page = no overlapping previews
+            .withEndAction {
+                if (playerExpanded) {
+                    // The player now covers the browse page: stop its previews/Shorts and hide it (no overlapping videos).
+                    browseView.evaluateJavascript(
+                        "document.querySelectorAll('video').forEach(function(v){try{v.pause()}catch(e){}})", null
+                    )
+                    browseView.visibility = View.INVISIBLE
+                }
+            }
             .start()
     }
 

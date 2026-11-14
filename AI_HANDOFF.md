@@ -35,8 +35,9 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
 - Only the browse page is paused in `onPause()`. Never pause the player page. Only the player WebView uses the always-visible override.
 - Notification/lock screen: `PlaybackService` shows position, duration, thumbnail (downloaded from i.ytimg.com without cookies or redirects),
   play/pause/prev/next/seek. Commands come back as "play|pause|toggle|next|prev|seek:<ms>" to `window.__tubeCmd` in the player page.
-- While the player is expanded the browse page is set INVISIBLE (after the slide-in), and back to VISIBLE on minimize/close. In `inject.js` the browse page
-  blocks `HTMLMediaElement.play()` (feed previews) except on /shorts and when the bridge is missing.
+- While the player is expanded the browse page is paused (all its `<video>` elements) and set INVISIBLE (after the slide-in), and back to VISIBLE on
+  minimize/close. Feed previews in the browse page are KEPT on purpose (the owner likes them); hiding the page is what prevents overlapping videos.
+  Do not re-add a `play()` blocker.
 - Video quality: pill at the top-left of the player opens a dialog (Auto, 240p..1080p). Saved in SharedPreferences "tubelite_prefs"/"quality" and sent to the page as
   `window.__tubeQuality` (document-start prefix + onPageFinished + `__tubeSetQuality`). The page calls the player's `setPlaybackQualityRange`. Picks made inside
   YouTube's own menu are NOT detected.

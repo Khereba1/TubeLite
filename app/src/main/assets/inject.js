@@ -112,18 +112,6 @@
     } catch (err) {}
   }, true);
 
-  /* ---- browse page: no autoplaying feed previews (they overlapped the player and waste battery); Shorts still play ---- */
-  if (role === 'browse') {
-    try {
-      var origPlay = HTMLMediaElement.prototype.play;
-      HTMLMediaElement.prototype.play = function () {
-        if (!window.TubeBridge || location.pathname.indexOf('/shorts') === 0) return origPlay.apply(this, arguments);
-        try { this.pause(); } catch (e) {}
-        return Promise.resolve();
-      };
-    } catch (e) {}
-  }
-
   if (role !== 'player') return;
 
   /* ---- player: fixed video quality chosen in the app (window.__tubeQuality = auto | small | medium | large | hd720 | hd1080) ---- */
