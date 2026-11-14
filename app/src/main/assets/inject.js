@@ -192,9 +192,18 @@
       }
       var vr = v.getBoundingClientRect();
       if (!vr.width || !vr.height) { dbg('zoom: video has no size'); return; }
-      var s = Math.max(boxW / vr.width, boxH / vr.height);
+      // The <video> element may fill the whole screen while the picture inside is letterboxed (object-fit: contain).
+      // So work out the size of the PICTURE from the video's own dimensions, not from the element box.
+      var vw = v.videoWidth, vh = v.videoHeight;
+      var cw = vr.width, ch = vr.height;
+      if (vw > 0 && vh > 0) {
+        var fit = Math.min(vr.width / vw, vr.height / vh);
+        cw = vw * fit; ch = vh * fit;
+      }
+      var s = Math.max(boxW / cw, boxH / ch);
       dbg('zoom: fs=' + !!fs + ' box=' + Math.round(boxW) + 'x' + Math.round(boxH) +
-        ' video=' + Math.round(vr.width) + 'x' + Math.round(vr.height) + ' scale=' + s.toFixed(2));
+        ' element=' + Math.round(vr.width) + 'x' + Math.round(vr.height) +
+        ' picture=' + Math.round(cw) + 'x' + Math.round(ch) + ' scale=' + s.toFixed(2));
       if (s > 1.01 && s < 3) v.style.transform = (zoomOrig ? zoomOrig + ' ' : '') + 'scale(' + s + ')';
     } catch (e) { dbg('zoom error: ' + e); }
   }

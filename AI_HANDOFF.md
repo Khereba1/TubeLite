@@ -43,6 +43,8 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
   button (top right on an LTR page, top left on an RTL/Arabic page: the page reports "dir|rtl|ltr", see `applyDirection`) = quality dialog (Auto, 144p..1080p). Saved in SharedPreferences "tubelite_prefs"/"quality" and sent to the
   page as `window.__tubeQuality` (document-start prefix + onPageFinished + `__tubeSetQuality`). The page calls the player's `setPlaybackQualityRange`.
   Picks made inside YouTube's own menu are NOT detected. Unconfirmed on a real device: whether the player API call actually changes the quality.
+- Error log: launcher-icon long-press shortcut AND a neutral "Error log" button in the quality dialog (player page).
+- Zoom-to-fill computes the picture size from `videoWidth/videoHeight` (the <video> element can be full screen with the picture letterboxed inside it).
 - Player page unmutes each new video once (`ensureUnmuted` in inject.js; YouTube starts muted when the page has no user gesture).
 - `refreshPlayer()` (onResume) nudges the video surface to redraw after returning to the app. Best guess, unconfirmed.
 - If WEB_MESSAGE_LISTENER is not supported the app falls back to ONE page (everything in `browseView`, no notification).

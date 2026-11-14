@@ -516,6 +516,7 @@ class MainActivity : ComponentActivity() {
                 setQuality(qualityValues[which])
                 dialog.dismiss()
             }
+            .setNeutralButton(R.string.shortcut_log) { _, _ -> startActivity(Intent(this, LogActivity::class.java)) }
             .show()
     }
 
