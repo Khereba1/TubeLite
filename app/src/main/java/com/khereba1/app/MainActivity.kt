@@ -92,9 +92,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var miniTitle: TextView
     private lateinit var miniToggle: ImageButton
     private var playerExpanded = false
-    private lateinit var qualityPill: TextView
     private var quality = "auto"
-    private val qualityValues = arrayOf("auto", "small", "medium", "large", "hd720", "hd1080")
+    private val qualityValues = arrayOf("auto", "tiny", "small", "medium", "large", "hd720", "hd1080")
 
     private var customView: View? = null
     private var customContainer: GestureFrame? = null
@@ -297,41 +296,47 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun roundIconButton(iconRes: Int, description: String, onClick: () -> Unit): ImageButton {
+        val dp = resources.displayMetrics.density
+        val b = ImageButton(this)
+        b.setImageResource(iconRes)
+        b.contentDescription = description
+        b.scaleType = ImageView.ScaleType.FIT_CENTER
+        b.setPadding((8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt())
+        val bg = GradientDrawable()
+        bg.shape = GradientDrawable.OVAL
+        bg.setColor(Color.parseColor("#99000000")) // dark round background: visible on light and dark pages
+        b.background = bg
+        b.setOnClickListener { onClick() }
+        return b
+    }
+
     private fun buildPlayerLayer(): FrameLayout {
         val dp = resources.displayMetrics.density
         val layer = FrameLayout(this)
         layer.setBackgroundColor(Color.BLACK)
         layer.visibility = View.GONE
 
-        val pill = ImageView(this)
-        pill.setImageResource(android.R.drawable.arrow_down_float)
-        pill.contentDescription = getString(R.string.minimize)
-        val bg = GradientDrawable()
-        bg.setColor(Color.parseColor("#99000000"))
-        bg.cornerRadius = 16 * dp
-        pill.background = bg
-        pill.setOnClickListener { minimizePlayer() }
-        val lp = FrameLayout.LayoutParams((56 * dp).toInt(), (28 * dp).toInt(), Gravity.TOP or Gravity.CENTER_HORIZONTAL)
-        lp.topMargin = (4 * dp).toInt()
-        layer.addView(pill, lp)
-
-        qualityPill = TextView(this)
-        qualityPill.setTextColor(Color.WHITE)
-        qualityPill.textSize = 12f
-        qualityPill.gravity = Gravity.CENTER
-        qualityPill.setPadding((10 * dp).toInt(), (4 * dp).toInt(), (10 * dp).toInt(), (4 * dp).toInt())
-        val qbg = GradientDrawable()
-        qbg.setColor(Color.parseColor("#99000000"))
-        qbg.cornerRadius = 16 * dp
-        qualityPill.background = qbg
-        qualityPill.setOnClickListener { showQualityDialog() }
-        updateQualityPill()
-        val qlp = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.LEFT
+        // Two round buttons in the empty middle of YouTube's top bar (56dp tall): minimize + video quality.
+        val size = (40 * dp).toInt()
+        val controls = LinearLayout(this)
+        controls.orientation = LinearLayout.HORIZONTAL
+        controls.addView(
+            roundIconButton(R.drawable.ic_minimize, getString(R.string.minimize)) { minimizePlayer() },
+            LinearLayout.LayoutParams(size, size)
         )
-        qlp.topMargin = (4 * dp).toInt()
+        val qlp = LinearLayout.LayoutParams(size, size)
         qlp.leftMargin = (8 * dp).toInt()
-        layer.addView(qualityPill, qlp)
+        controls.addView(
+            roundIconButton(R.drawable.ic_quality, getString(R.string.quality_title)) { showQualityDialog() },
+            qlp
+        )
+        val clp = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        )
+        clp.topMargin = (8 * dp).toInt()
+        layer.addView(controls, clp)
         return layer
     }
 
@@ -470,6 +475,7 @@ class MainActivity : ComponentActivity() {
 
     private fun qualityLabel(q: String): String {
         return when (q) {
+            "tiny" -> "144p"
             "small" -> "240p"
             "medium" -> "360p"
             "large" -> "480p"
@@ -479,15 +485,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun updateQualityPill() {
-        qualityPill.text = qualityLabel(quality)
-    }
-
     private fun setQuality(q: String) {
         if (q !in qualityValues) return
         quality = q
         getSharedPreferences("tubelite_prefs", Context.MODE_PRIVATE).edit().putString("quality", q).apply()
-        updateQualityPill()
         playerView?.evaluateJavascript("window.__tubeSetQuality&&window.__tubeSetQuality('" + q + "')", null)
     }
 

@@ -38,9 +38,10 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
 - While the player is expanded the browse page is paused (all its `<video>` elements) and set INVISIBLE (after the slide-in), and back to VISIBLE on
   minimize/close. Feed previews in the browse page are KEPT on purpose (the owner likes them); hiding the page is what prevents overlapping videos.
   Do not re-add a `play()` blocker.
-- Video quality: pill at the top-left of the player opens a dialog (Auto, 240p..1080p). Saved in SharedPreferences "tubelite_prefs"/"quality" and sent to the page as
-  `window.__tubeQuality` (document-start prefix + onPageFinished + `__tubeSetQuality`). The page calls the player's `setPlaybackQualityRange`. Picks made inside
-  YouTube's own menu are NOT detected.
+- Player controls: two round vector-icon buttons (`ic_minimize`, `ic_quality`) centered in the 56dp-tall top bar of the watch page (empty middle area),
+  built by `buildPlayerLayer()`. The quality button opens a dialog (Auto, 144p..1080p). Saved in SharedPreferences "tubelite_prefs"/"quality" and sent to the
+  page as `window.__tubeQuality` (document-start prefix + onPageFinished + `__tubeSetQuality`). The page calls the player's `setPlaybackQualityRange`.
+  Picks made inside YouTube's own menu are NOT detected. Unconfirmed on a real device: whether the player API call actually changes the quality.
 - `refreshPlayer()` (onResume) nudges the video surface to redraw after returning to the app. Best guess, unconfirmed.
 - If WEB_MESSAGE_LISTENER is not supported the app falls back to ONE page (everything in `browseView`, no notification).
 - Unconfirmed on a real device (nothing here was run): anchor click interception on m.youtube.com, `nextVideo()/previousVideo()` on the player element.
