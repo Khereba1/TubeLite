@@ -15,7 +15,7 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
 2. NEVER strip or rewrite Content-Security-Policy, and NEVER proxy page requests through app code.
 3. NEVER use `addJavascriptInterface`. The only app<->page channel is `WebViewCompat.addWebMessageListener("TubeBridge")`,
    restricted to https://m.youtube.com and https://www.youtube.com. It accepts ONLY short text messages: the player state
-   "<1|0>|<videoId>|<posMs>|<durMs>|<title>", "open|<watch url>" (browse page) and "browse|<youtube url>" (player page).
+   "<1|0>|<videoId>|<posMs>|<durMs>|<title>", "open|<watch url>" (browse page), "browse|<youtube url>" (player page) and "dir|ltr" / "dir|rtl" (player page).
    Every URL is re-validated in Kotlin (https + youtube host) before use, and commands to the page go through COMMAND_REGEX.
 4. NEVER expose cookies, tokens or any account data to JS or to any file/log. No `getCookie` helper.
 5. Main-frame navigation is limited to youtube.com / google.com subdomains over https (`isAllowedHost` in MainActivity.kt); everything else goes to the external browser or is blocked.
@@ -38,9 +38,9 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
 - While the player is expanded the browse page is paused (all its `<video>` elements) and set INVISIBLE (after the slide-in), and back to VISIBLE on
   minimize/close. Feed previews in the browse page are KEPT on purpose (the owner likes them); hiding the page is what prevents overlapping videos.
   Do not re-add a `play()` blocker.
-- Player controls (built by `buildPlayerLayer()`, drawn over the watch page's own 56dp top bar, assuming an LTR/English YouTube UI):
+- Player controls (built by `buildPlayerLayer()`, drawn over the watch page's own 48dp top bar):
   a dark pill with a wide chevron (`ic_minimize`) centered = minimize; a round 48dp-touch button (`ic_quality`) placed exactly over the site's "more" (three dots)
-  button at the top right = quality dialog (Auto, 144p..1080p). Saved in SharedPreferences "tubelite_prefs"/"quality" and sent to the
+  button (top right on an LTR page, top left on an RTL/Arabic page: the page reports "dir|rtl|ltr", see `applyDirection`) = quality dialog (Auto, 144p..1080p). Saved in SharedPreferences "tubelite_prefs"/"quality" and sent to the
   page as `window.__tubeQuality` (document-start prefix + onPageFinished + `__tubeSetQuality`). The page calls the player's `setPlaybackQualityRange`.
   Picks made inside YouTube's own menu are NOT detected. Unconfirmed on a real device: whether the player API call actually changes the quality.
 - `refreshPlayer()` (onResume) nudges the video surface to redraw after returning to the app. Best guess, unconfirmed.

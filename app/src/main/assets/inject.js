@@ -182,12 +182,25 @@
     } catch (e) {}
   }
 
+  /* ---- player: report page direction ("dir|rtl" / "dir|ltr") so the app can place its quality button over the site's "more" button ---- */
+  var lastDir = '';
+  function reportDir() {
+    try {
+      if (!window.TubeBridge) return;
+      var d = (document.documentElement.getAttribute('dir') || '').toLowerCase();
+      if (d !== 'rtl' && d !== 'ltr') d = (getComputedStyle(document.documentElement).direction || 'ltr').toLowerCase();
+      d = d === 'rtl' ? 'rtl' : 'ltr';
+      if (d !== lastDir) { lastDir = d; window.TubeBridge.postMessage('dir|' + d); }
+    } catch (e) {}
+  }
+  document.addEventListener('DOMContentLoaded', reportDir);
+
   // Media events instead of constant polling: light on CPU and battery.
   ['play', 'playing', 'pause', 'ended', 'emptied', 'loadstart', 'loadedmetadata', 'durationchange', 'seeked', 'ratechange']
     .forEach(function (t) {
       document.addEventListener(t, function () { report(true); skipAd(); applyQuality(false); }, true);
     });
-  setInterval(function () { report(false); applyQuality(false); }, 3000); // safety net: title changes, missed events
+  setInterval(function () { report(false); applyQuality(false); reportDir(); }, 3000); // safety net: title changes, missed events
   setInterval(skipAd, 1000);        // safety net: ads that appear without a media event
 
   /* ---- player: commands from the app ---- */

@@ -94,6 +94,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var miniTitle: TextView
     private lateinit var miniToggle: ImageButton
     private var playerExpanded = false
+    private lateinit var qualityBtn: ImageButton
     private var quality = "auto"
     private val qualityValues = arrayOf("auto", "tiny", "small", "medium", "large", "hd720", "hd1080")
 
@@ -318,7 +319,7 @@ class MainActivity : ComponentActivity() {
         layer.visibility = View.GONE
         val dark = Color.parseColor("#212121") // solid, so nothing shows through
 
-        // Minimize: a clear pill in the middle of YouTube's top bar (the bar is 56dp tall, the middle is empty).
+        // Minimize: a clear pill in the middle of YouTube's top bar (the bar is 48dp tall, the middle is empty).
         val pillBg = GradientDrawable()
         pillBg.setColor(dark)
         pillBg.cornerRadius = 17 * dp
@@ -326,23 +327,29 @@ class MainActivity : ComponentActivity() {
             R.drawable.ic_minimize, getString(R.string.minimize), pillBg, (10 * dp).toInt(), (6 * dp).toInt()
         ) { minimizePlayer() }
         val plp = FrameLayout.LayoutParams((64 * dp).toInt(), (34 * dp).toInt(), Gravity.TOP or Gravity.CENTER_HORIZONTAL)
-        plp.topMargin = (11 * dp).toInt()
+        plp.topMargin = (7 * dp).toInt() // (48 - 34) / 2: centered in the 48dp bar
         layer.addView(pill, plp)
 
-        // Quality: a round button placed exactly over the site's useless "more" (three dots) button at the top right.
-        // The view is 48dp (same touch area as the site button), the visible circle is 40dp.
+        // Quality: a round button placed exactly over the site's useless "more" (three dots) button, which sits at the
+        // top right (LTR page) or top left (RTL page, see applyDirection). The view is 48dp (same touch area as the site
+        // button), the visible circle is 40dp.
         val circle = GradientDrawable()
         circle.shape = GradientDrawable.OVAL
         circle.setColor(dark)
-        val qualityBtn = iconButton(
+        qualityBtn = iconButton(
             R.drawable.ic_quality, getString(R.string.quality_title),
             InsetDrawable(circle, (4 * dp).toInt()), (12 * dp).toInt(), (12 * dp).toInt()
         ) { showQualityDialog() }
         val qlp = FrameLayout.LayoutParams((48 * dp).toInt(), (48 * dp).toInt(), Gravity.TOP or Gravity.RIGHT)
-        qlp.topMargin = (4 * dp).toInt()
-        qlp.rightMargin = (4 * dp).toInt()
         layer.addView(qualityBtn, qlp)
         return layer
+    }
+
+    /** The page tells us if YouTube is shown right-to-left (Arabic): then its "more" button is on the left. */
+    private fun applyDirection(rtl: Boolean) {
+        val lp = qualityBtn.layoutParams as FrameLayout.LayoutParams
+        lp.gravity = Gravity.TOP or (if (rtl) Gravity.LEFT else Gravity.RIGHT)
+        qualityBtn.layoutParams = lp
     }
 
     private fun buildMiniBar(): LinearLayout {
@@ -530,6 +537,7 @@ class MainActivity : ComponentActivity() {
         when {
             msg.startsWith("open|") -> if (role == "browse") openVideo(msg.substring(5))
             msg.startsWith("browse|") -> if (role == "player") openInBrowse(msg.substring(7), true)
+            msg.startsWith("dir|") -> if (role == "player") applyDirection(msg.substring(4) == "rtl")
             role == "player" -> onPlayState(msg)
         }
     }
