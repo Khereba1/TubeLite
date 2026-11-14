@@ -172,14 +172,31 @@
   function dbg(t) {
     try { if (window.TubeBridge) window.TubeBridge.postMessage('dbg|' + String(t).slice(0, 200)); } catch (e) {}
   }
-  var zoomOrig = null;
+  var zoomStyle = null, zoomEl = null;
+  function clearZoom() {
+    try {
+      if (zoomEl) { zoomEl.classList.remove('__tube_zoom'); zoomEl = null; }
+      if (zoomStyle) zoomStyle.textContent = '';
+    } catch (e) {}
+  }
+  // The scale lives in OUR stylesheet with !important, so it beats any inline style YouTube rewrites on the element.
+  function applyZoom(el, s) {
+    if (!zoomStyle) {
+      zoomStyle = document.createElement('style');
+      zoomStyle.id = '__tube_zoom_css';
+      (document.head || document.documentElement).appendChild(zoomStyle);
+    }
+    zoomStyle.textContent = '.__tube_zoom{transform:scale(' + s + ') !important;transform-origin:50% 50% !important;}';
+    if (zoomEl && zoomEl !== el) zoomEl.classList.remove('__tube_zoom');
+    el.classList.add('__tube_zoom');
+    zoomEl = el;
+  }
   function setZoom(on) {
     try {
       var v = document.querySelector('video');
+      clearZoom();
+      if (!on) return;
       if (!v) { dbg('zoom: no video'); return; }
-      if (zoomOrig === null) zoomOrig = v.style.transform || '';
-      v.style.transform = zoomOrig; // measure from the normal state
-      if (!on) { zoomOrig = null; return; }
       var fs = document.fullscreenElement || document.webkitFullscreenElement;
       var boxW, boxH;
       if (fs) {
@@ -190,10 +207,10 @@
         var pr = p.getBoundingClientRect();
         boxW = pr.width; boxH = pr.height;
       }
-      var vr = v.getBoundingClientRect();
+      var vr = v.getBoundingClientRect(); // measured without our scale (cleared above)
       if (!vr.width || !vr.height) { dbg('zoom: video has no size'); return; }
-      // The <video> element may fill the whole screen while the picture inside is letterboxed (object-fit: contain).
-      // So work out the size of the PICTURE from the video's own dimensions, not from the element box.
+      // The <video> element may fill the whole screen while the picture inside is letterboxed (object-fit: contain),
+      // so work out the size of the PICTURE from the video's own dimensions.
       var vw = v.videoWidth, vh = v.videoHeight;
       var cw = vr.width, ch = vr.height;
       if (vw > 0 && vh > 0) {
@@ -204,7 +221,25 @@
       dbg('zoom: fs=' + !!fs + ' box=' + Math.round(boxW) + 'x' + Math.round(boxH) +
         ' element=' + Math.round(vr.width) + 'x' + Math.round(vr.height) +
         ' picture=' + Math.round(cw) + 'x' + Math.round(ch) + ' scale=' + s.toFixed(2));
-      if (s > 1.01 && s < 3) v.style.transform = (zoomOrig ? zoomOrig + ' ' : '') + 'scale(' + s + ')';
+      if (!(s > 1.01 && s < 3)) return;
+      // First choice: scale the video's container (YouTube rewrites the video element's own style).
+      var target = v.parentElement || v;
+      applyZoom(target, s);
+      var after = v.getBoundingClientRect().width;
+      if (after < vr.width * (1 + (s - 1) * 0.5)) {
+        applyZoom(v, s); // container scaling had no effect: scale the video element itself
+        after = v.getBoundingClientRect().width;
+        dbg('zoom: container ineffective, video element used, width ' + Math.round(vr.width) + ' -> ' + Math.round(after));
+      } else {
+        dbg('zoom: container ' + target.tagName + '.' + String(target.className).slice(0, 30) +
+          ' width ' + Math.round(vr.width) + ' -> ' + Math.round(after));
+      }
+      setTimeout(function () {
+        try {
+          dbg('zoom later: width=' + Math.round(v.getBoundingClientRect().width) +
+            ' class=' + !!(zoomEl && zoomEl.classList.contains('__tube_zoom')));
+        } catch (e) {}
+      }, 500);
     } catch (e) { dbg('zoom error: ' + e); }
   }
 

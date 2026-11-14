@@ -44,7 +44,11 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
   page as `window.__tubeQuality` (document-start prefix + onPageFinished + `__tubeSetQuality`). The page calls the player's `setPlaybackQualityRange`.
   Picks made inside YouTube's own menu are NOT detected. Unconfirmed on a real device: whether the player API call actually changes the quality.
 - Error log: launcher-icon long-press shortcut AND a neutral "Error log" button in the quality dialog (player page).
-- Zoom-to-fill computes the picture size from `videoWidth/videoHeight` (the <video> element can be full screen with the picture letterboxed inside it).
+- Zoom-to-fill (`setZoom` in inject.js): computes the picture size from `videoWidth/videoHeight`, then scales the video's PARENT container with a rule in our own
+  stylesheet (`.__tube_zoom{transform:scale(s) !important}`), because YouTube rewrites the <video> element's inline style. If the container scale changes nothing it
+  falls back to the video element. Everything is logged as "PAGE zoom..." (box, element, picture, scale, widths before/after, and 500 ms later).
+  On a real device (Android 15, 764x360 CSS px fullscreen) the pinch gesture and the scale value were confirmed correct from the log (about 1.19); the earlier
+  inline `video.style.transform` approach showed no visible change.
 - Player page unmutes each new video once (`ensureUnmuted` in inject.js; YouTube starts muted when the page has no user gesture).
 - `refreshPlayer()` (onResume) nudges the video surface to redraw after returning to the app. Best guess, unconfirmed.
 - If WEB_MESSAGE_LISTENER is not supported the app falls back to ONE page (everything in `browseView`, no notification).
