@@ -43,8 +43,10 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
   button (top right on an LTR page, top left on an RTL/Arabic page: the page reports "dir|rtl|ltr", see `applyDirection`) = quality dialog (Auto, 144p..1080p). Saved in SharedPreferences "tubelite_prefs"/"quality" and sent to the
   page as `window.__tubeQuality` (document-start prefix + onPageFinished + `__tubeSetQuality`). The page calls the player's `setPlaybackQualityRange`.
   Picks made inside YouTube's own menu are NOT detected. Unconfirmed on a real device: whether the player API call actually changes the quality.
-- Fullscreen video uses the camera cutout area: `showCustomView` sets `layoutInDisplayCutoutMode = SHORT_EDGES` and `setDecorFitsSystemWindows(false)`;
-  `hideCustomView` restores DEFAULT / true. (Without it a black strip the width of the cutout, 36dp on the owner's phone, stays beside the video.)
+- Window insets: the activity is ALWAYS edge-to-edge (`setDecorFitsSystemWindows(false)`, cutout mode SHORT_EDGES, set once in onCreate). `root` has an insets
+  listener that pads `content` (browse page + mini bar) and `playerLayer` with systemBars|displayCutout|ime, recomputed on every change. The fullscreen video
+  container is added to `root` unpadded, so it fills the screen including the camera cutout. Do NOT toggle decorFitsSystemWindows/cutout mode when entering or
+  leaving fullscreen: an earlier version did, and after leaving landscape fullscreen the page kept a stale 36dp left padding (cutout width) in portrait.
 - Error log: launcher-icon long-press shortcut AND a neutral "Error log" button in the quality dialog (player page).
 - Zoom-to-fill (`setZoom` in inject.js): computes the picture size from `videoWidth/videoHeight`, then scales the video's PARENT container with a rule in our own
   stylesheet (`.__tube_zoom{transform:scale(s) !important}`), because YouTube rewrites the <video> element's inline style. If the container scale changes nothing it

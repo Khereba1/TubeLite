@@ -43,6 +43,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -165,6 +166,24 @@ class MainActivity : ComponentActivity() {
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         )
         setContentView(root)
+
+        // The window always draws edge-to-edge (also under the camera cutout). The normal UI (browse page, mini bar,
+        // player page) gets its padding from the CURRENT insets every time they change (rotation, bars shown/hidden,
+        // keyboard), so nothing can stay stale. The fullscreen video container is added to `root` without padding,
+        // so it really fills the screen, cutout included.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val wlp = window.attributes
+        wlp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        window.attributes = wlp
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val pad = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout() or WindowInsetsCompat.Type.ime()
+            )
+            content.setPadding(pad.left, pad.top, pad.right, pad.bottom)
+            playerLayer.setPadding(pad.left, pad.top, pad.right, pad.bottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
 
         PlaybackService.controller = { cmd -> runCommand(cmd) }
 
@@ -680,10 +699,8 @@ class MainActivity : ComponentActivity() {
         c.show(WindowInsetsCompat.Type.systemBars())
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        WindowCompat.setDecorFitsSystemWindows(window, true)
         val lp = window.attributes
         lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-        lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
         window.attributes = lp
     }
 
@@ -715,11 +732,6 @@ class MainActivity : ComponentActivity() {
         c.hide(WindowInsetsCompat.Type.systemBars())
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        // Let the video extend into the camera cutout (punch hole) instead of leaving a black strip beside it.
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        val wlp = window.attributes
-        wlp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-        window.attributes = wlp
     }
 
     /** Vertical swipe in fullscreen: left half = brightness, right half = volume. */
