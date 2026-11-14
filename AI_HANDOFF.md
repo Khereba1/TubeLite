@@ -14,13 +14,29 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
 1. NEVER load JavaScript or any code from the internet (no CDN, no `@latest`). All page script lives in `assets/inject.js`.
 2. NEVER strip or rewrite Content-Security-Policy, and NEVER proxy page requests through app code.
 3. NEVER use `addJavascriptInterface`. The only app<->page channel is `WebViewCompat.addWebMessageListener("TubeBridge")`,
-   restricted to https://m.youtube.com and https://www.youtube.com, and it accepts ONLY a short text "1|title" / "0|title".
+   restricted to https://m.youtube.com and https://www.youtube.com. It accepts ONLY short text messages: the player state
+   "<1|0>|<videoId>|<posMs>|<durMs>|<title>", "open|<watch url>" (browse page) and "browse|<youtube url>" (player page).
+   Every URL is re-validated in Kotlin (https + youtube host) before use, and commands to the page go through COMMAND_REGEX.
 4. NEVER expose cookies, tokens or any account data to JS or to any file/log. No `getCookie` helper.
 5. Main-frame navigation is limited to youtube.com / google.com subdomains over https (`isAllowedHost` in MainActivity.kt); everything else goes to the external browser or is blocked.
 6. Do not add permissions beyond: INTERNET, FOREGROUND_SERVICE, FOREGROUND_SERVICE_MEDIA_PLAYBACK, POST_NOTIFICATIONS.
    No microphone/camera/location (the WebChromeClient does not override onPermissionRequest on purpose).
 7. Keep `allowBackup=false`, `usesCleartextTraffic=false`, mixed content NEVER_ALLOW, file access off.
 8. Signing key only from GitHub Secrets (see below). Never the public AOSP test key.
+
+## Two pages (browse + player)
+`MainActivity` holds two WebViews that share cookies: `browseView` (home, search, channels, sign-in) and a lazily created `playerView`
+(the watch page, inside `playerLayer`). `assets/inject.js` knows which one it is from `window.__tubeRole` ("browse"/"player").
+- Browse page: a click on a `/watch` link is captured in JS and sent as `open|url`; Kotlin loads it in the player page and slides the player in.
+  Fallbacks: `shouldOverrideUrlLoading` and `doUpdateVisitedHistory` in `TubeClient`.
+- Player page: back button or the pill at the top minimizes it (`translationY` off screen, NOT visibility GONE, so audio keeps playing);
+  a mini bar (thumbnail, title, play/pause, close) shows under the browse page. Tapping it expands the player again.
+  Clicks on non-watch YouTube links in the player page are sent as `browse|url` (shown in the browse page, player minimized).
+- Only the browse page is paused in `onPause()`. Never pause the player page. Only the player WebView uses the always-visible override.
+- Notification/lock screen: `PlaybackService` shows position, duration, thumbnail (downloaded from i.ytimg.com without cookies or redirects),
+  play/pause/prev/next/seek. Commands come back as "play|pause|toggle|next|prev|seek:<ms>" to `window.__tubeCmd` in the player page.
+- If WEB_MESSAGE_LISTENER is not supported the app falls back to ONE page (everything in `browseView`, no notification).
+- Unconfirmed on a real device (nothing here was run): anchor click interception on m.youtube.com, `nextVideo()/previousVideo()` on the player element.
 
 ## How it works
 - `YtWebView.kt`: overrides `onWindowVisibilityChanged` to always say VISIBLE (needed for background audio). Do not call `webView.onPause()`.
@@ -37,7 +53,7 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
 ## Files (app/src/main/java/com/khereba1/app)
 - App.kt: Application, AppLog (file log), LocaleHelper (from the kit, unchanged)
 - MainActivity.kt: WebView setup, navigation rules, bridge, fullscreen, back handling, start-URL from intents
-- YtWebView.kt: WebView that always reports visible
+- YtWebView.kt: WebView; the player one always reports visible
 - AdBlock.kt: network-level ad rules
 - PlaybackService.kt: background playback service + notification
 - GestureFrame.kt: fullscreen container; vertical swipe = brightness (left) / volume (right)

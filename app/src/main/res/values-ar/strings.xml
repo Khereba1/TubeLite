@@ -2,6 +2,9 @@
     <string name="play">تشغيل</string>
     <string name="pause">إيقاف مؤقت</string>
     <string name="stop">إغلاق</string>
+    <string name="previous">السابق</string>
+    <string name="next">التالي</string>
+    <string name="minimize">تصغير</string>
     <string name="notif_channel">التشغيل في الخلفية</string>
     <string name="shortcut_log">سجل الأخطاء</string>
     <string name="log_empty">السجل فاضي.</string>

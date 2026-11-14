@@ -1,30 +1,33 @@
 /* TubeLite page script. Local file, bundled in the APK (nothing is loaded from the internet).
-   Runs at document start on m.youtube.com / www.youtube.com only.
-   1) keeps YouTube from pausing when the app is in the background
-   2) strips ad data from YouTube's responses, hides ad UI, skips ads that still show
-   3) reports play/pause + title to the app (TubeBridge) and accepts play/pause commands. */
+   Runs at document start on m.youtube.com / www.youtube.com only, in two kinds of pages:
+     role "browse": the page you scroll/search in. Video links are handed to the app (it opens the player page).
+     role "player": the watch page. Keeps playing in the background, reports state, accepts commands.
+   Common: strips ad data from YouTube's responses, hides ad UI. */
 (function () {
   'use strict';
   if (window.__tubeInjected) return;
   window.__tubeInjected = true;
+  var role = window.__tubeRole || 'browse';
 
-  /* ---- 1) always "visible" ---- */
-  try {
-    var def = function (prop, val) {
-      try {
-        Object.defineProperty(document, prop, { get: function () { return val; }, configurable: true });
-      } catch (e) {}
-    };
-    def('hidden', false);
-    def('webkitHidden', false);
-    def('visibilityState', 'visible');
-    def('webkitVisibilityState', 'visible');
-    var stopEvt = function (e) { e.stopImmediatePropagation(); };
-    document.addEventListener('visibilitychange', stopEvt, true);
-    document.addEventListener('webkitvisibilitychange', stopEvt, true);
-  } catch (e) {}
+  /* ---- player only: always "visible" so YouTube does not pause in the background ---- */
+  if (role === 'player') {
+    try {
+      var def = function (prop, val) {
+        try {
+          Object.defineProperty(document, prop, { get: function () { return val; }, configurable: true });
+        } catch (e) {}
+      };
+      def('hidden', false);
+      def('webkitHidden', false);
+      def('visibilityState', 'visible');
+      def('webkitVisibilityState', 'visible');
+      var stopEvt = function (e) { e.stopImmediatePropagation(); };
+      document.addEventListener('visibilitychange', stopEvt, true);
+      document.addEventListener('webkitvisibilitychange', stopEvt, true);
+    } catch (e) {}
+  }
 
-  /* ---- 2a) remove ad data from responses ---- */
+  /* ---- remove ad data from responses ---- */
   var AD_KEYS = ['adPlacements', 'playerAds', 'adSlots'];
   function clean(o, depth) {
     if (!o || typeof o !== 'object' || depth > 4) return;
@@ -65,13 +68,14 @@
     });
   } catch (e) {}
 
-  /* ---- 2b) hide ad UI ---- */
+  /* ---- hide ad UI, remove tap flash ---- */
   var CSS = [
     'ytm-promoted-sparkles-web-renderer', 'ytm-promoted-video-renderer', 'ytm-companion-slot',
     'ad-slot-renderer', 'ytm-statement-banner-renderer', 'ytm-brand-video-singleton-renderer',
     'ytm-in-feed-ad-layout-renderer', '#player-ads', '.video-ads', '.ytp-ad-overlay-container',
     '.ytp-ad-image-overlay'
-  ].join(',') + '{display:none !important;}';
+  ].join(',') + '{display:none !important;}' +
+    '*{-webkit-tap-highlight-color:transparent;}html{touch-action:manipulation;}';
   function addStyle() {
     try {
       if (document.getElementById('__tube_css')) return;
@@ -84,7 +88,33 @@
   addStyle();
   document.addEventListener('DOMContentLoaded', addStyle);
 
-  /* ---- 2c) skip ads that still get through ---- */
+  /* ---- link routing between the two pages (needs the app bridge) ----
+     browse page: a click on a video link -> app opens it in the player page.
+     player page: a click on any other YouTube link (channel, search...) -> app shows it in the browse page. */
+  document.addEventListener('click', function (e) {
+    try {
+      if (!window.TubeBridge) return;
+      var t = e.target;
+      var a = t && t.closest ? t.closest('a[href]') : null;
+      if (!a) return;
+      var u = new URL(a.href, location.href);
+      if (u.hostname !== 'm.youtube.com' && u.hostname !== 'www.youtube.com' && u.hostname !== 'youtube.com') return;
+      var isWatch = u.pathname === '/watch';
+      if (role === 'browse' && isWatch) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        window.TubeBridge.postMessage('open|' + u.href);
+      } else if (role === 'player' && !isWatch) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        window.TubeBridge.postMessage('browse|' + u.href);
+      }
+    } catch (err) {}
+  }, true);
+
+  if (role !== 'player') return;
+
+  /* ---- player: skip ads that still get through ---- */
   function skipAd() {
     try {
       var p = document.querySelector('.html5-video-player') || document.getElementById('movie_player');
@@ -98,34 +128,60 @@
     } catch (e) {}
   }
 
-  /* ---- 3) app bridge ---- */
-  var lastState = '';
-  function report() {
+  /* ---- player: report state to the app ----
+     message: "<1|0>|<videoId>|<positionMs>|<durationMs>|<title>" */
+  var lastKey = '';
+  function report(force) {
     try {
       if (!window.TubeBridge) return;
       var v = document.querySelector('video');
-      var s;
+      var s, key;
       if (!v) {
-        s = '0|';
+        s = '0||0|0|';
+        key = 'none';
       } else {
         var playing = !v.paused && !v.ended && v.readyState > 2;
         var title = (document.title || '').replace(/ - YouTube$/, '');
-        s = (playing ? '1|' : '0|') + title;
+        var id = '';
+        try { id = new URL(location.href).searchParams.get('v') || ''; } catch (e) {}
+        var pos = Math.round((v.currentTime || 0) * 1000);
+        var dur = isFinite(v.duration) ? Math.round(v.duration * 1000) : 0;
+        s = (playing ? '1|' : '0|') + id + '|' + pos + '|' + dur + '|' + title;
+        key = (playing ? '1|' : '0|') + id + '|' + dur + '|' + title;
       }
-      if (s !== lastState) { lastState = s; window.TubeBridge.postMessage(s); }
+      if (!force && key === lastKey) return;
+      lastKey = key;
+      window.TubeBridge.postMessage(s);
     } catch (e) {}
   }
-  // Media events instead of constant polling: much lighter on CPU and battery.
-  function onMedia() { report(); skipAd(); }
-  ['play', 'playing', 'pause', 'ended', 'emptied', 'loadstart'].forEach(function (t) {
-    document.addEventListener(t, onMedia, true);
-  });
-  setInterval(report, 3000); // safety net: title changes, missed events
-  setInterval(skipAd, 1000); // safety net: ads that appear without a media event
 
+  // Media events instead of constant polling: light on CPU and battery.
+  ['play', 'playing', 'pause', 'ended', 'emptied', 'loadstart', 'loadedmetadata', 'durationchange', 'seeked', 'ratechange']
+    .forEach(function (t) {
+      document.addEventListener(t, function () { report(true); skipAd(); }, true);
+    });
+  setInterval(report, 3000, false); // safety net: title changes, missed events
+  setInterval(skipAd, 1000);        // safety net: ads that appear without a media event
+
+  /* ---- player: commands from the app ---- */
   window.__tubeCmd = function (c) {
     try {
       var v = document.querySelector('video');
+      var p = document.querySelector('.html5-video-player') || document.getElementById('movie_player');
+      if (c === 'next') {
+        if (p && p.nextVideo) p.nextVideo();
+        else { var nb = document.querySelector('.ytp-next-button'); if (nb) nb.click(); }
+        return;
+      }
+      if (c === 'prev') {
+        if (p && p.previousVideo) p.previousVideo();
+        else if (v) v.currentTime = 0;
+        return;
+      }
+      if (c.indexOf('seek:') === 0) {
+        if (v) v.currentTime = parseInt(c.substring(5), 10) / 1000;
+        return;
+      }
       if (!v) return;
       if (c === 'play') v.play();
       else if (c === 'pause') v.pause();
