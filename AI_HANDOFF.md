@@ -15,7 +15,7 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
 2. NEVER strip or rewrite Content-Security-Policy, and NEVER proxy page requests through app code.
 3. NEVER use `addJavascriptInterface`. The only app<->page channel is `WebViewCompat.addWebMessageListener("TubeBridge")`,
    restricted to https://m.youtube.com and https://www.youtube.com. It accepts ONLY short text messages: the player state
-   "<1|0>|<videoId>|<posMs>|<durMs>|<title>", "open|<watch url>" (browse page), "browse|<youtube url>" (player page) and "dir|ltr|<how>" / "dir|rtl|<how>" (player page; <how> = layout/lang/dir/css/default, logged as "DIR" in the in-app log).
+   "<1|0>|<videoId>|<posMs>|<durMs>|<title>", "open|<watch url>" (browse page), "browse|<youtube url>" (player page), "dbg|<text>" (player page, log only, truncated) and "dir|ltr|<how>" / "dir|rtl|<how>" (player page; <how> = layout/lang/dir/css/default, logged as "DIR" in the in-app log).
    Every URL is re-validated in Kotlin (https + youtube host) before use, and commands to the page go through COMMAND_REGEX.
 4. NEVER expose cookies, tokens or any account data to JS or to any file/log. No `getCookie` helper.
 5. Main-frame navigation is limited to youtube.com / google.com subdomains over https (`isAllowedHost` in MainActivity.kt); everything else goes to the external browser or is blocked.
@@ -66,7 +66,7 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
 - YtWebView.kt: WebView; the player one always reports visible
 - AdBlock.kt: network-level ad rules
 - PlaybackService.kt: background playback service + notification
-- GestureFrame.kt: fullscreen container; vertical swipe = brightness (left) / volume (right); pinch out/in = zoom-to-fill on/off (commands "zoom:1"/"zoom:0" -> `setZoom` in inject.js, which scales the <video> element)
+- GestureFrame.kt: fullscreen container (works in dispatchTouchEvent because the WebView asks parents not to intercept during pinch; takes a gesture over early and sends the page one ACTION_CANCEL); vertical swipe = brightness (left) / volume (right); pinch out/in = zoom-to-fill on/off (commands "zoom:1"/"zoom:0" -> `setZoom` in inject.js, which scales the <video> element)
 - LogActivity.kt: shows AppLog
 - assets/inject.js: bundled page script
 - res/xml/shortcuts.xml: launcher shortcut to LogActivity

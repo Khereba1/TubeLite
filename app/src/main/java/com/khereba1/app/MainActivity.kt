@@ -540,6 +540,7 @@ class MainActivity : ComponentActivity() {
         when {
             msg.startsWith("open|") -> if (role == "browse") openVideo(msg.substring(5))
             msg.startsWith("browse|") -> if (role == "player") openInBrowse(msg.substring(7), true)
+            msg.startsWith("dbg|") -> if (role == "player") AppLog.log("PAGE", msg.substring(4).take(200)) // log only
             msg.startsWith("dir|") -> if (role == "player") {
                 val parts = msg.substring(4).split("|")
                 applyDirection(parts[0] == "rtl", if (parts.size > 1) parts[1] else "")

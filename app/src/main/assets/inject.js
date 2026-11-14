@@ -168,22 +168,35 @@
     } catch (e) {}
   }
 
-  /* ---- player: "zoom to fill" in fullscreen (pinch out in the app): scale the video until it covers the player box ---- */
+  /* ---- player: "zoom to fill" in fullscreen (pinch out in the app): scale the video until it covers the screen ---- */
+  function dbg(t) {
+    try { if (window.TubeBridge) window.TubeBridge.postMessage('dbg|' + String(t).slice(0, 200)); } catch (e) {}
+  }
   var zoomOrig = null;
   function setZoom(on) {
     try {
       var v = document.querySelector('video');
-      if (!v) return;
+      if (!v) { dbg('zoom: no video'); return; }
       if (zoomOrig === null) zoomOrig = v.style.transform || '';
       v.style.transform = zoomOrig; // measure from the normal state
       if (!on) { zoomOrig = null; return; }
-      var p = document.querySelector('.html5-video-player') || document.getElementById('movie_player');
-      if (!p) return;
-      var pr = p.getBoundingClientRect(), vr = v.getBoundingClientRect();
-      if (!vr.width || !vr.height) return;
-      var s = Math.max(pr.width / vr.width, pr.height / vr.height);
+      var fs = document.fullscreenElement || document.webkitFullscreenElement;
+      var boxW, boxH;
+      if (fs) {
+        boxW = window.innerWidth; boxH = window.innerHeight; // in fullscreen the page box is the screen
+      } else {
+        var p = document.querySelector('.html5-video-player') || document.getElementById('movie_player');
+        if (!p) { dbg('zoom: no box'); return; }
+        var pr = p.getBoundingClientRect();
+        boxW = pr.width; boxH = pr.height;
+      }
+      var vr = v.getBoundingClientRect();
+      if (!vr.width || !vr.height) { dbg('zoom: video has no size'); return; }
+      var s = Math.max(boxW / vr.width, boxH / vr.height);
+      dbg('zoom: fs=' + !!fs + ' box=' + Math.round(boxW) + 'x' + Math.round(boxH) +
+        ' video=' + Math.round(vr.width) + 'x' + Math.round(vr.height) + ' scale=' + s.toFixed(2));
       if (s > 1.01 && s < 3) v.style.transform = (zoomOrig ? zoomOrig + ' ' : '') + 'scale(' + s + ')';
-    } catch (e) {}
+    } catch (e) { dbg('zoom error: ' + e); }
   }
 
   /* ---- player: skip ads that still get through ---- */
