@@ -57,7 +57,7 @@ import java.util.Locale
 private const val HOME_URL = "https://m.youtube.com/"
 private const val PAUSED_STOP_DELAY_MS = 5 * 60 * 1000L
 private val VIDEO_ID_REGEX = Regex("^[A-Za-z0-9_-]{11}$")
-private val COMMAND_REGEX = Regex("^(play|pause|toggle|next|prev|seek:[0-9]{1,9})$")
+private val COMMAND_REGEX = Regex("^(play|pause|toggle|next|prev|seek:[0-9]{1,9}|zoom:[01])$")
 
 private fun isYoutubeHost(host: String?): Boolean {
     if (host == null) return false
@@ -662,6 +662,7 @@ class MainActivity : ComponentActivity() {
 
     private fun hideCustomView() {
         val v = customView ?: return
+        runCommand("zoom:0") // leave fullscreen with the video back at normal size
         val container = customContainer
         if (container != null) {
             container.removeView(v)
@@ -690,7 +691,11 @@ class MainActivity : ComponentActivity() {
         customView = view
         customViewCallback = callback
         view.setBackgroundColor(Color.BLACK)
-        val container = GestureFrame(this) { left, delta -> adjustFromGesture(left, delta) }
+        val container = GestureFrame(
+            this,
+            { left, delta -> adjustFromGesture(left, delta) },
+            { fill -> runCommand(if (fill) "zoom:1" else "zoom:0") } // pinch out = fill the screen
+        )
         container.setBackgroundColor(Color.BLACK)
         container.addView(
             view,

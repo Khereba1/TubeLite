@@ -141,6 +141,51 @@
     applyQuality(true);
   };
 
+  /* ---- player: start every video with sound (YouTube starts muted when the page has no user gesture) ---- */
+  var unmutedId = '';
+  function unmuteNow() {
+    try {
+      var v = document.querySelector('video');
+      var p = document.querySelector('.html5-video-player') || document.getElementById('movie_player');
+      if (!v) return;
+      if (v.muted || (p && p.isMuted && p.isMuted())) {
+        if (p && p.unMute) p.unMute();
+        v.muted = false;
+      }
+      if (p && p.getVolume && p.setVolume && p.getVolume() === 0) p.setVolume(100);
+    } catch (e) {}
+  }
+  function ensureUnmuted() {
+    try {
+      var id = curId();
+      if (id === '' || id === unmutedId) return;
+      var v = document.querySelector('video');
+      if (!v || v.paused) return; // wait until it really plays
+      unmutedId = id;
+      unmuteNow();
+      setTimeout(unmuteNow, 700);  // YouTube sometimes mutes again right after starting
+      setTimeout(unmuteNow, 2000);
+    } catch (e) {}
+  }
+
+  /* ---- player: "zoom to fill" in fullscreen (pinch out in the app): scale the video until it covers the player box ---- */
+  var zoomOrig = null;
+  function setZoom(on) {
+    try {
+      var v = document.querySelector('video');
+      if (!v) return;
+      if (zoomOrig === null) zoomOrig = v.style.transform || '';
+      v.style.transform = zoomOrig; // measure from the normal state
+      if (!on) { zoomOrig = null; return; }
+      var p = document.querySelector('.html5-video-player') || document.getElementById('movie_player');
+      if (!p) return;
+      var pr = p.getBoundingClientRect(), vr = v.getBoundingClientRect();
+      if (!vr.width || !vr.height) return;
+      var s = Math.max(pr.width / vr.width, pr.height / vr.height);
+      if (s > 1.01 && s < 3) v.style.transform = (zoomOrig ? zoomOrig + ' ' : '') + 'scale(' + s + ')';
+    } catch (e) {}
+  }
+
   /* ---- player: skip ads that still get through ---- */
   function skipAd() {
     try {
@@ -221,9 +266,9 @@
   // Media events instead of constant polling: light on CPU and battery.
   ['play', 'playing', 'pause', 'ended', 'emptied', 'loadstart', 'loadedmetadata', 'durationchange', 'seeked', 'ratechange']
     .forEach(function (t) {
-      document.addEventListener(t, function () { report(true); skipAd(); applyQuality(false); reportDir(); }, true);
+      document.addEventListener(t, function () { report(true); skipAd(); applyQuality(false); ensureUnmuted(); reportDir(); }, true);
     });
-  setInterval(function () { report(false); applyQuality(false); reportDir(); }, 3000); // safety net: title changes, missed events
+  setInterval(function () { report(false); applyQuality(false); ensureUnmuted(); reportDir(); }, 3000); // safety net: title changes, missed events
   setInterval(skipAd, 1000);        // safety net: ads that appear without a media event
 
   /* ---- player: commands from the app ---- */
@@ -241,6 +286,8 @@
         else if (v) v.currentTime = 0;
         return;
       }
+      if (c === 'zoom:1') { setZoom(true); return; }
+      if (c === 'zoom:0') { setZoom(false); return; }
       if (c.indexOf('seek:') === 0) {
         if (v) v.currentTime = parseInt(c.substring(5), 10) / 1000;
         return;
