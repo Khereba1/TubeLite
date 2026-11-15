@@ -13,6 +13,19 @@
     try { if (window.TubeBridge) window.TubeBridge.postMessage('dbg|' + String(t).slice(0, 200)); } catch (e) {}
   }
 
+  /* ---- keep the two pages independent ----
+     Both WebViews share the same site storage. YouTube remembers the last chosen quality there ("yt-player-quality"),
+     so a Shorts quality set in the browse page leaked into the regular player (and the other way round).
+     The app applies the right quality itself for every video, so YouTube's own memory is switched off. */
+  try {
+    var origSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k) {
+      if (k === 'yt-player-quality') return;
+      return origSetItem.apply(this, arguments);
+    };
+    localStorage.removeItem('yt-player-quality'); // a value written by an earlier version
+  } catch (e) {}
+
   /* ---- player only: always "visible" so YouTube does not pause in the background ---- */
   if (role === 'player') {
     try {
@@ -136,7 +149,7 @@
           if (!pl.setPlaybackQualityRange) continue;
           n++;
           if (q === 'auto') {
-            if (explicit) pl.setPlaybackQualityRange('tiny', 'highres');
+            pl.setPlaybackQualityRange('tiny', 'highres');
           } else {
             pl.setPlaybackQualityRange(q, q);
             if (pl.setPlaybackQuality) pl.setPlaybackQuality(q);
@@ -176,7 +189,7 @@
       var id = curId();
       if (!explicit && (id === '' || id === qualAppliedId)) return;
       if (q === 'auto') {
-        if (explicit) p.setPlaybackQualityRange('tiny', 'highres');
+        p.setPlaybackQualityRange('tiny', 'highres'); // full range = YouTube chooses; also clears a stale fixed quality
       } else {
         p.setPlaybackQualityRange(q, q);
         if (p.setPlaybackQuality) p.setPlaybackQuality(q);

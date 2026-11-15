@@ -57,6 +57,8 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
   On a real device (Android 15, 764x360 CSS px fullscreen) the pinch gesture and the scale value were confirmed correct from the log (about 1.19); the earlier
   inline `video.style.transform` approach showed no visible change.
 - Player page unmutes each new video once (`ensureUnmuted` in inject.js; YouTube starts muted when the page has no user gesture).
+- The two WebViews share site storage. YouTube saves the last chosen quality in localStorage "yt-player-quality", which made a Shorts quality leak into the regular
+  player. inject.js (both pages, document start) ignores writes to that key and removes any old value; "auto" always resets the range to tiny..highres.
 - `refreshPlayer()` (onResume) nudges the video surface to redraw after returning to the app. Best guess, unconfirmed.
 - If WEB_MESSAGE_LISTENER is not supported the app falls back to ONE page (everything in `browseView`, no notification).
 - Unconfirmed on a real device (nothing here was run): anchor click interception on m.youtube.com, `nextVideo()/previousVideo()` on the player element.

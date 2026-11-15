@@ -14,8 +14,8 @@ android {
         applicationId = "com.khereba1.tubelite"
         minSdk = 29
         targetSdk = 34
-        versionCode = 17
-        versionName = "1.16"
+        versionCode = 18
+        versionName = "1.17"
     }
 
     // Stable signing: when the env vars exist (GitHub Secrets) the release is signed with the fixed key,
