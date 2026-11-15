@@ -14,8 +14,8 @@ android {
         applicationId = "com.khereba1.tubelite"
         minSdk = 29
         targetSdk = 34
-        versionCode = 19
-        versionName = "1.18"
+        versionCode = 20
+        versionName = "1.19"
 
         // Only the phone's CPU type (the download engine ships native code per CPU type, which is big).
         ndk {
@@ -97,4 +97,6 @@ dependencies {
 
     // Download engine (yt-dlp for Android). 0.18.1 is the version that supports the JavaScript runtime YouTube now needs.
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    // ffmpeg module: merges the separate video and audio streams of the high qualities
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
 }
