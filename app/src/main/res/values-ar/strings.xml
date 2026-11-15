@@ -11,4 +11,8 @@
     <string name="load_error">الصفحة مفتحتش. اتأكد من الإنترنت.</string>
     <string name="quality_title">جودة الفيديو</string>
     <string name="quality_auto">تلقائي</string>
+    <string name="settings_title">الإعدادات</string>
+    <string name="settings_video_quality">جودة الفيديو الافتراضية</string>
+    <string name="settings_shorts_quality">جودة الريلز (Shorts) الافتراضية</string>
+    <string name="settings_speed">سرعة التشغيل الافتراضية</string>
 </resources>

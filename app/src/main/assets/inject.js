@@ -9,6 +9,10 @@
   window.__tubeInjected = true;
   var role = window.__tubeRole || 'browse';
 
+  function dbg(t) {
+    try { if (window.TubeBridge) window.TubeBridge.postMessage('dbg|' + String(t).slice(0, 200)); } catch (e) {}
+  }
+
   /* ---- player only: always "visible" so YouTube does not pause in the background ---- */
   if (role === 'player') {
     try {
@@ -112,6 +116,51 @@
     } catch (err) {}
   }, true);
 
+  /* ---- browse page: Shorts play here, so the default Shorts quality is applied here (speed is kept at 1x) ---- */
+  if (role === 'browse') {
+    var shortsAppliedId = '';
+    var shortsId = function () {
+      var m = /^\/shorts\/([^\/?#]+)/.exec(location.pathname);
+      return m ? m[1] : '';
+    };
+    var applyShorts = function (explicit) {
+      try {
+        var id = shortsId();
+        if (id === '') return;
+        if (!explicit && id === shortsAppliedId) return;
+        var q = window.__tubeShortsQuality || 'auto';
+        var players = document.querySelectorAll('.html5-video-player');
+        var n = 0;
+        for (var i = 0; i < players.length; i++) {
+          var pl = players[i];
+          if (!pl.setPlaybackQualityRange) continue;
+          n++;
+          if (q === 'auto') {
+            if (explicit) pl.setPlaybackQualityRange('tiny', 'highres');
+          } else {
+            pl.setPlaybackQualityRange(q, q);
+            if (pl.setPlaybackQuality) pl.setPlaybackQuality(q);
+          }
+        }
+        var vids = document.querySelectorAll('video');
+        for (var k = 0; k < vids.length; k++) { if (vids[k].playbackRate !== 1) vids[k].playbackRate = 1; }
+        if (n > 0) {
+          shortsAppliedId = id;
+          if (!explicit) {
+            dbg('shorts: quality ' + q + ' on ' + n + ' player(s)');
+            setTimeout(function () { applyShorts(true); }, 1500); // YouTube sometimes resets it
+          }
+        }
+      } catch (e) {}
+    };
+    window.__tubeApplyPrefs = function () { shortsAppliedId = ''; applyShorts(true); };
+    ['playing', 'loadedmetadata'].forEach(function (t) {
+      document.addEventListener(t, function () { applyShorts(false); }, true);
+    });
+    setInterval(function () { applyShorts(false); }, 2000);
+    return;
+  }
+
   if (role !== 'player') return;
 
   /* ---- player: fixed video quality chosen in the app (window.__tubeQuality = auto | small | medium | large | hd720 | hd1080) ---- */
@@ -136,9 +185,34 @@
       if (!explicit) setTimeout(function () { applyQuality(true); }, 2000); // YouTube sometimes resets it
     } catch (e) {}
   }
-  window.__tubeSetQuality = function (q) {
-    window.__tubeQuality = q;
+
+  /* ---- player: default playback speed (window.__tubeSpeed, e.g. "1.5"), once per video so a manual change sticks ---- */
+  var speedAppliedId = '';
+  function applySpeed(explicit) {
+    try {
+      var sp = parseFloat(window.__tubeSpeed || '1');
+      if (!(sp > 0)) sp = 1;
+      var id = curId();
+      if (!explicit && (id === '' || id === speedAppliedId)) return;
+      var v = document.querySelector('video');
+      if (!v) return;
+      var p = document.querySelector('.html5-video-player') || document.getElementById('movie_player');
+      if (p && p.setPlaybackRate) p.setPlaybackRate(sp);
+      v.playbackRate = sp;
+      speedAppliedId = id;
+      if (!explicit) {
+        setTimeout(function () { applySpeed(true); }, 700); // YouTube sometimes resets it right after starting
+        setTimeout(function () { applySpeed(true); }, 2000);
+      }
+    } catch (e) {}
+  }
+
+  // The app calls this after any change in its settings dialog.
+  window.__tubeApplyPrefs = function () {
+    qualAppliedId = '';
+    speedAppliedId = '';
     applyQuality(true);
+    applySpeed(true);
   };
 
   /* ---- player: start every video with sound (YouTube starts muted when the page has no user gesture) ---- */
@@ -169,9 +243,6 @@
   }
 
   /* ---- player: "zoom to fill" in fullscreen (pinch out in the app): scale the video until it covers the screen ---- */
-  function dbg(t) {
-    try { if (window.TubeBridge) window.TubeBridge.postMessage('dbg|' + String(t).slice(0, 200)); } catch (e) {}
-  }
   var zoomStyle = null, zoomEl = null;
   function clearZoom() {
     try {
@@ -323,9 +394,9 @@
   // Media events instead of constant polling: light on CPU and battery.
   ['play', 'playing', 'pause', 'ended', 'emptied', 'loadstart', 'loadedmetadata', 'durationchange', 'seeked', 'ratechange']
     .forEach(function (t) {
-      document.addEventListener(t, function () { report(true); skipAd(); applyQuality(false); ensureUnmuted(); reportDir(); }, true);
+      document.addEventListener(t, function () { report(true); skipAd(); applyQuality(false); applySpeed(false); ensureUnmuted(); reportDir(); }, true);
     });
-  setInterval(function () { report(false); applyQuality(false); ensureUnmuted(); reportDir(); }, 3000); // safety net: title changes, missed events
+  setInterval(function () { report(false); applyQuality(false); applySpeed(false); ensureUnmuted(); reportDir(); }, 3000); // safety net: title changes, missed events
   setInterval(skipAd, 1000);        // safety net: ads that appear without a media event
 
   /* ---- player: commands from the app ---- */

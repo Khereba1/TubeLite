@@ -40,8 +40,11 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
   Do not re-add a `play()` blocker.
 - Player controls (built by `buildPlayerLayer()`, drawn over the watch page's own 48dp top bar):
   a dark pill with a wide chevron (`ic_minimize`) centered = minimize; a round 48dp-touch button (`ic_quality`) placed exactly over the site's "more" (three dots)
-  button (top right on an LTR page, top left on an RTL/Arabic page: the page reports "dir|rtl|ltr", see `applyDirection`) = quality dialog (Auto, 144p..1080p). Saved in SharedPreferences "tubelite_prefs"/"quality" and sent to the
-  page as `window.__tubeQuality` (document-start prefix + onPageFinished + `__tubeSetQuality`). The page calls the player's `setPlaybackQualityRange`.
+  button (top right on an LTR page, top left on an RTL/Arabic page: the page reports "dir|rtl|ltr", see `applyDirection`) = SETTINGS menu
+  (`showSettingsDialog`): default video quality, default Shorts quality, default playback speed, error log. Saved in SharedPreferences "tubelite_prefs"
+  (keys quality, shorts_quality, speed; values validated against fixed lists) and sent to BOTH pages by `prefsScript()` (document-start prefix, onPageFinished,
+  and `window.__tubeApplyPrefs()` after a change). Player page: `applyQuality` / `applySpeed` once per video id (a manual change inside YouTube sticks for that video).
+  Browse page: Shorts play there, so `applyShorts` (inject.js) applies the Shorts quality and forces 1x. Shorts speed is always 1x (not configurable).
   Picks made inside YouTube's own menu are NOT detected. Unconfirmed on a real device: whether the player API call actually changes the quality.
 - Window insets: the activity is ALWAYS edge-to-edge (`setDecorFitsSystemWindows(false)`, cutout mode SHORT_EDGES, set once in onCreate). `root` has an insets
   listener that pads `content` (browse page + mini bar) and `playerLayer` with systemBars|displayCutout|ime, recomputed on every change. The fullscreen video

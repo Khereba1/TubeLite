@@ -12,4 +12,8 @@
     <string name="load_error">Page failed to load. Check your connection.</string>
     <string name="quality_title">Video quality</string>
     <string name="quality_auto">Auto</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_video_quality">Default video quality</string>
+    <string name="settings_shorts_quality">Default Shorts quality</string>
+    <string name="settings_speed">Default playback speed</string>
 </resources>

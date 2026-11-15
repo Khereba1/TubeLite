@@ -97,8 +97,11 @@ class MainActivity : ComponentActivity() {
     private var playerExpanded = false
     private lateinit var qualityBtn: ImageButton
     private var pageRtl: Boolean? = null
-    private var quality = "auto"
+    private var quality = "auto"        // default video quality
+    private var shortsQuality = "auto"  // default Shorts (reels) quality
+    private var speed = "1.0"           // default video playback speed
     private val qualityValues = arrayOf("auto", "tiny", "small", "medium", "large", "hd720", "hd1080")
+    private val speedValues = arrayOf("0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0")
 
     private var customView: View? = null
     private var customContainer: GestureFrame? = null
@@ -125,8 +128,13 @@ class MainActivity : ComponentActivity() {
         userAgent = WebSettings.getDefaultUserAgent(this)
             .replace("; wv", "")
             .replace("Version/4.0 ", "")
-        quality = getSharedPreferences("tubelite_prefs", Context.MODE_PRIVATE).getString("quality", "auto") ?: "auto"
+        val prefs = getSharedPreferences("tubelite_prefs", Context.MODE_PRIVATE)
+        quality = prefs.getString("quality", "auto") ?: "auto"
+        shortsQuality = prefs.getString("shorts_quality", "auto") ?: "auto"
+        speed = prefs.getString("speed", "1.0") ?: "1.0"
         if (quality !in qualityValues) quality = "auto"
+        if (shortsQuality !in qualityValues) shortsQuality = "auto"
+        if (speed !in speedValues) speed = "1.0"
         bridgeSupported = try {
             WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
         } catch (e: Throwable) {
@@ -311,7 +319,7 @@ class MainActivity : ComponentActivity() {
             }
             if (injectScript.isNotEmpty() && documentStartSupported) {
                 WebViewCompat.addDocumentStartJavaScript(
-                    wv, "window.__tubeRole='" + role + "';window.__tubeQuality='" + quality + "';\n" + injectScript, origins
+                    wv, "window.__tubeRole='" + role + "';" + prefsScript() + "\n" + injectScript, origins
                 )
             }
         } catch (e: Throwable) {
@@ -350,16 +358,16 @@ class MainActivity : ComponentActivity() {
         plp.topMargin = (7 * dp).toInt() // (48 - 34) / 2: centered in the 48dp bar
         layer.addView(pill, plp)
 
-        // Quality: a round button placed exactly over the site's useless "more" (three dots) button, which sits at the
+        // Settings: a round button placed exactly over the site's useless "more" (three dots) button, which sits at the
         // top right (LTR page) or top left (RTL page, see applyDirection). The view is 48dp (same touch area as the site
         // button), the visible circle is 40dp.
         val circle = GradientDrawable()
         circle.shape = GradientDrawable.OVAL
         circle.setColor(dark)
         qualityBtn = iconButton(
-            R.drawable.ic_quality, getString(R.string.quality_title),
+            R.drawable.ic_quality, getString(R.string.settings_title),
             InsetDrawable(circle, (4 * dp).toInt()), (12 * dp).toInt(), (12 * dp).toInt()
-        ) { showQualityDialog() }
+        ) { showSettingsDialog() }
         val qlp = FrameLayout.LayoutParams((48 * dp).toInt(), (48 * dp).toInt(), Gravity.TOP or Gravity.RIGHT)
         layer.addView(qualityBtn, qlp)
         return layer
@@ -519,23 +527,59 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun setQuality(q: String) {
-        if (q !in qualityValues) return
-        quality = q
-        getSharedPreferences("tubelite_prefs", Context.MODE_PRIVATE).edit().putString("quality", q).apply()
-        playerView?.evaluateJavascript("window.__tubeSetQuality&&window.__tubeSetQuality('" + q + "')", null)
+    private fun speedLabel(v: String): String = (if (v == "1.0") "1" else v) + "\u00D7"
+
+    /** JS that hands the saved settings to a page. Values can only be entries of the fixed lists. */
+    private fun prefsScript(): String =
+        "window.__tubeQuality='" + quality + "';window.__tubeShortsQuality='" + shortsQuality +
+            "';window.__tubeSpeed='" + speed + "';"
+
+    /** Save, then tell both pages to apply the new settings to what is playing now. */
+    private fun savePrefsAndApply() {
+        getSharedPreferences("tubelite_prefs", Context.MODE_PRIVATE).edit()
+            .putString("quality", quality)
+            .putString("shorts_quality", shortsQuality)
+            .putString("speed", speed)
+            .apply()
+        val js = prefsScript() + "window.__tubeApplyPrefs&&window.__tubeApplyPrefs()"
+        playerView?.evaluateJavascript(js, null)
+        browseView.evaluateJavascript(js, null)
     }
 
-    private fun showQualityDialog() {
-        val labels = Array(qualityValues.size) { i -> qualityLabel(qualityValues[i]) }
-        val checked = qualityValues.indexOf(quality).coerceAtLeast(0)
+    private fun pickOption(
+        titleRes: Int, labels: Array<String>, values: Array<String>, current: String, onPick: (String) -> Unit
+    ) {
+        val checked = values.indexOf(current).coerceAtLeast(0)
         AlertDialog.Builder(this)
-            .setTitle(R.string.quality_title)
+            .setTitle(titleRes)
             .setSingleChoiceItems(labels, checked) { dialog, which ->
-                setQuality(qualityValues[which])
+                onPick(values[which])
                 dialog.dismiss()
+                savePrefsAndApply()
+                showSettingsDialog() // back to the list, now showing the new value
             }
-            .setNeutralButton(R.string.shortcut_log) { _, _ -> startActivity(Intent(this, LogActivity::class.java)) }
+            .show()
+    }
+
+    private fun showSettingsDialog() {
+        val rows = arrayOf(
+            getString(R.string.settings_video_quality) + ": " + qualityLabel(quality),
+            getString(R.string.settings_shorts_quality) + ": " + qualityLabel(shortsQuality),
+            getString(R.string.settings_speed) + ": " + speedLabel(speed),
+            getString(R.string.shortcut_log)
+        )
+        val qualityLabels = Array(qualityValues.size) { i -> qualityLabel(qualityValues[i]) }
+        val speedLabels = Array(speedValues.size) { i -> speedLabel(speedValues[i]) }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.settings_title)
+            .setItems(rows) { _, which ->
+                when (which) {
+                    0 -> pickOption(R.string.settings_video_quality, qualityLabels, qualityValues, quality) { quality = it }
+                    1 -> pickOption(R.string.settings_shorts_quality, qualityLabels, qualityValues, shortsQuality) { shortsQuality = it }
+                    2 -> pickOption(R.string.settings_speed, speedLabels, speedValues, speed) { speed = it }
+                    else -> startActivity(Intent(this, LogActivity::class.java))
+                }
+            }
             .show()
     }
 
@@ -560,7 +604,7 @@ class MainActivity : ComponentActivity() {
         when {
             msg.startsWith("open|") -> if (role == "browse") openVideo(msg.substring(5))
             msg.startsWith("browse|") -> if (role == "player") openInBrowse(msg.substring(7), true)
-            msg.startsWith("dbg|") -> if (role == "player") AppLog.log("PAGE", msg.substring(4).take(200)) // log only
+            msg.startsWith("dbg|") -> AppLog.log("PAGE", msg.substring(4).take(200)) // log only (either page)
             msg.startsWith("dir|") -> if (role == "player") {
                 val parts = msg.substring(4).split("|")
                 applyDirection(parts[0] == "rtl", if (parts.size > 1) parts[1] else "")
@@ -805,7 +849,7 @@ class MainActivity : ComponentActivity() {
 
         override fun onPageFinished(view: WebView, url: String?) {
             super.onPageFinished(view, url)
-            if (role == "player") view.evaluateJavascript("window.__tubeQuality='" + quality + "'", null)
+            view.evaluateJavascript(prefsScript(), null)
         }
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
@@ -813,7 +857,7 @@ class MainActivity : ComponentActivity() {
             if (!documentStartSupported && injectScript.isNotEmpty() && url != null &&
                 url.startsWith("https://m.youtube.com")
             ) {
-                view.evaluateJavascript("window.__tubeRole='" + role + "';window.__tubeQuality='" + quality + "';\n" + injectScript, null)
+                view.evaluateJavascript("window.__tubeRole='" + role + "';" + prefsScript() + "\n" + injectScript, null)
             }
         }
 
