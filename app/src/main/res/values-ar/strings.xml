@@ -15,4 +15,5 @@
     <string name="settings_video_quality">جودة الفيديو الافتراضية</string>
     <string name="settings_shorts_quality">جودة الريلز (Shorts) الافتراضية</string>
     <string name="settings_speed">سرعة التشغيل الافتراضية</string>
+    <string name="settings_download_test">اختبار محرك التحميل (تجريبي)</string>
 </resources>

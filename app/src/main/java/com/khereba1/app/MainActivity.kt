@@ -566,6 +566,7 @@ class MainActivity : ComponentActivity() {
             getString(R.string.settings_video_quality) + ": " + qualityLabel(quality),
             getString(R.string.settings_shorts_quality) + ": " + qualityLabel(shortsQuality),
             getString(R.string.settings_speed) + ": " + speedLabel(speed),
+            getString(R.string.settings_download_test),
             getString(R.string.shortcut_log)
         )
         val qualityLabels = Array(qualityValues.size) { i -> qualityLabel(qualityValues[i]) }
@@ -577,6 +578,9 @@ class MainActivity : ComponentActivity() {
                     0 -> pickOption(R.string.settings_video_quality, qualityLabels, qualityValues, quality) { quality = it }
                     1 -> pickOption(R.string.settings_shorts_quality, qualityLabels, qualityValues, shortsQuality) { shortsQuality = it }
                     2 -> pickOption(R.string.settings_speed, speedLabels, speedValues, speed) { speed = it }
+                    3 -> startActivity(
+                        Intent(this, DownloadTestActivity::class.java).putExtra("url", playerView?.url ?: "")
+                    )
                     else -> startActivity(Intent(this, LogActivity::class.java))
                 }
             }

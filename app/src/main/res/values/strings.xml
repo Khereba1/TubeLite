@@ -16,4 +16,5 @@
     <string name="settings_video_quality">Default video quality</string>
     <string name="settings_shorts_quality">Default Shorts quality</string>
     <string name="settings_speed">Default playback speed</string>
+    <string name="settings_download_test">Download engine test (experimental)</string>
 </resources>

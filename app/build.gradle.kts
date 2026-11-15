@@ -14,8 +14,13 @@ android {
         applicationId = "com.khereba1.tubelite"
         minSdk = 29
         targetSdk = 34
-        versionCode = 18
-        versionName = "1.17"
+        versionCode = 19
+        versionName = "1.18"
+
+        // Only the phone's CPU type (the download engine ships native code per CPU type, which is big).
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     // Stable signing: when the env vars exist (GitHub Secrets) the release is signed with the fixed key,
@@ -56,8 +61,21 @@ android {
     }
 
     packaging {
+        // The download engine runs python/yt-dlp as real executables: its native libs must be extracted to disk.
+        jniLibs {
+            useLegacyPackaging = true
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += listOf(
+                "/META-INF/DEPENDENCIES",
+                "/META-INF/LICENSE",
+                "/META-INF/LICENSE.txt",
+                "/META-INF/NOTICE",
+                "/META-INF/NOTICE.txt",
+                "/META-INF/INDEX.LIST",
+                "/META-INF/versions/9/module-info.class"
+            )
         }
     }
 }
@@ -76,4 +94,7 @@ dependencies {
 
     // WebView helpers: document-start script, origin-restricted message bridge, X-Requested-With control
     implementation("androidx.webkit:webkit:1.12.1")
+
+    // Download engine (yt-dlp for Android). 0.18.1 is the version that supports the JavaScript runtime YouTube now needs.
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
 }

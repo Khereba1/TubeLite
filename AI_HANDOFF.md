@@ -50,6 +50,15 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
   listener that pads `content` (browse page + mini bar) and `playerLayer` with systemBars|displayCutout|ime, recomputed on every change. The fullscreen video
   container is added to `root` unpadded, so it fills the screen including the camera cutout. Do NOT toggle decorFitsSystemWindows/cutout mode when entering or
   leaving fullscreen: an earlier version did, and after leaving landscape fullscreen the page kept a stale 36dp left padding (cutout width) in portrait.
+- DOWNLOAD ENGINE (phase 0, experimental): `io.github.junkfood02.youtubedl-android:library:0.18.1` (yt-dlp + python + QuickJS inside the app).
+  `DownloadEngine.kt` wraps it (init, version, update via `updateYoutubeDL(ctx, UpdateChannel._STABLE/_NIGHTLY)`, `execute(request, processId) { progress, eta, line -> }`),
+  `DownloadTestActivity.kt` is a plain test screen opened from the settings menu (row "Download engine test"). Downloads go to the app's own external folder, then are
+  copied to Downloads/TubeLite with MediaStore. Phase 0 uses single-file formats only (`b[ext=mp4]/b`, audio `ba[ext=m4a]/ba`), so ffmpeg is NOT included yet
+  (phase 1 adds `:ffmpeg` for HD video+audio merging and a quality choice).
+  Build config that must stay: `ndk.abiFilters = arm64-v8a`, `packaging.jniLibs.useLegacyPackaging = true`, the META-INF excludes.
+  Rules agreed with the owner: NO cookies or account data are ever passed to yt-dlp; the engine is updated only by the user (button) or once automatically after a
+  failed download (phase 1), only through the library's official update, never in the background; the bundled version stays as fallback and its version is always
+  shown. Only https YouTube links are accepted (`DownloadEngine.isYoutubeUrl`). The library is GPL-3.0 (fine for personal use; open the source if the APK is ever distributed).
 - Error log: launcher-icon long-press shortcut AND a neutral "Error log" button in the quality dialog (player page).
 - Zoom-to-fill (`setZoom` in inject.js): computes the picture size from `videoWidth/videoHeight`, then scales the video's PARENT container with a rule in our own
   stylesheet (`.__tube_zoom{transform:scale(s) !important}`), because YouTube rewrites the <video> element's inline style. If the container scale changes nothing it
