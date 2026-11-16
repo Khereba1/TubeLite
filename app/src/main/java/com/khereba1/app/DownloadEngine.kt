@@ -42,6 +42,20 @@ object DownloadEngine {
 
     class Result(val ok: Boolean, val message: String, val file: File? = null)
 
+    // The analysis of a video is kept in memory for a while, so opening the download screen again is instant
+    // and YouTube is not asked twice for the same video.
+    private class Cached(val time: Long, val info: Info)
+
+    private val cache = HashMap<String, Cached>()
+    private const val CACHE_MS = 30 * 60 * 1000L
+
+    private fun videoKey(url: String): String {
+        val u = Uri.parse(url)
+        val host = u.host?.lowercase(Locale.ROOT) ?: return url
+        if (host == "youtu.be") return u.lastPathSegment ?: url
+        return u.getQueryParameter("v") ?: url
+    }
+
     /** Only YouTube video links are accepted (also keeps anything that looks like an option out of yt-dlp). */
     fun isYoutubeUrl(url: String): Boolean {
         val u = Uri.parse(url)
@@ -98,6 +112,7 @@ object DownloadEngine {
     fun update(context: Context, nightly: Boolean): String {
         val channel = if (nightly) YoutubeDL.UpdateChannel._NIGHTLY else YoutubeDL.UpdateChannel._STABLE
         val status = YoutubeDL.getInstance().updateYoutubeDL(context.applicationContext, channel)
+        synchronized(cache) { cache.clear() } // a new engine may see other formats
         return status?.toString() ?: "?"
     }
 
@@ -145,7 +160,14 @@ object DownloadEngine {
     // ------------------------------------------------------------------ analysis
 
     fun analyze(context: Context, url: String, log: (String) -> Unit): Info {
-        return withAutoUpdate(context, log) { analyzeOnce(url) }
+        val key = videoKey(url)
+        synchronized(cache) {
+            val c = cache[key]
+            if (c != null && System.currentTimeMillis() - c.time < CACHE_MS) return c.info
+        }
+        val info = withAutoUpdate(context, log) { analyzeOnce(url) }
+        synchronized(cache) { cache[key] = Cached(System.currentTimeMillis(), info) }
+        return info
     }
 
     private fun analyzeOnce(url: String): Info {

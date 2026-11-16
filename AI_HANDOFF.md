@@ -56,6 +56,10 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
   `download` (`execute(request, processId) { progress, eta, line -> }`; format `bv*[height<=H][ext=mp4]+ba[ext=m4a]/...` + `--merge-output-format mp4/mkv`; audio `ba[ext=m4a]/ba`;
   without ffmpeg only `b[ext=mp4]/b`), `publishToDownloads` (MediaStore Downloads/TubeLite). `DownloadTestActivity.kt` is a plain-views screen opened from the settings
   menu: Analyze -> radio list of qualities (default = highest <= the app's default quality setting) -> Download; Update (stable/nightly) buttons; Cancel.
+  ANALYSIS: starts by itself when the download screen opens from a video (`DownloadTestActivity.startEngine`), is cached in memory for 30 minutes per video id
+  (cleared on engine update), and Download always goes analysis -> chosen quality (pressing Download during the analysis queues it). Never analyze videos in the
+  background or in bulk: it costs CPU/data and risks YouTube's bot checks on the owner's mobile IP. A "Test clients" benchmark (yt-dlp `player_client`) was discussed
+  but NOT built; the default clients change with every yt-dlp release.
   AUTO UPDATE: only inside `withAutoUpdate`: when analyze/download fails with something an update can fix (deny-list: bot check, private/unavailable video, no network,
   no space, cancel, age), the engine is updated ONCE per app session (stable channel) and the step is retried.
   Build config that must stay: `ndk.abiFilters = arm64-v8a`, `packaging.jniLibs.useLegacyPackaging = true`, the META-INF excludes.

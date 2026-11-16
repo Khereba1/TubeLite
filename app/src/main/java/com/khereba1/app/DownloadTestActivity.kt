@@ -47,6 +47,10 @@ class DownloadTestActivity : Activity() {
     private var engineReady = false
     private var lastUiUpdate = 0L
 
+    @Volatile
+    private var analyzing = false
+    private var pendingDownload = false
+
     // shows "Analyzing... 7s" so the wait is visible (yt-dlp needs several seconds per extraction on a phone)
     private val ticker = Handler(Looper.getMainLooper())
     private var phaseText: String? = null
@@ -201,6 +205,8 @@ class DownloadTestActivity : Activity() {
                 if (!ok) appendLog(DownloadEngine.initError ?: "unknown error")
                 if (ok && !DownloadEngine.ffmpegReady) appendLog("ffmpeg: " + (DownloadEngine.ffmpegError ?: "unknown"))
                 setBusy(false)
+                // Opening this screen from a video starts its analysis right away (one extraction; cached for 30 minutes).
+                if (ok && DownloadEngine.isYoutubeUrl(currentUrl())) analyze(false)
             }
         }.start()
     }
@@ -239,6 +245,7 @@ class DownloadTestActivity : Activity() {
         }
         setBusy(true)
         progressBar.progress = 0
+        analyzing = true
         startPhase("Analyzing the video...")
         val t0 = System.currentTimeMillis()
         Thread {
@@ -249,8 +256,11 @@ class DownloadTestActivity : Activity() {
                     endPhase()
                     showInfo(url, result)
                     appendLog("Analysis took " + secs + "s")
+                    analyzing = false
                     setBusy(false)
-                    if (thenDownload) startDownloadSelected()
+                    val go = thenDownload || pendingDownload
+                    pendingDownload = false
+                    if (go) startDownloadSelected()
                 }
             } catch (e: Throwable) {
                 AppLog.log("ENGINE", "analyze failed", e)
@@ -259,6 +269,8 @@ class DownloadTestActivity : Activity() {
                     endPhase()
                     statusView.text = message
                     appendLog(message)
+                    analyzing = false
+                    pendingDownload = false
                     setBusy(false)
                 }
             }
@@ -328,19 +340,15 @@ class DownloadTestActivity : Activity() {
     // ------------------------------------------------------------------ download
 
     private fun onDownloadClicked() {
-        if (busy) return
-        val url = currentUrl()
-        if (currentInfo != null && url == analyzedUrl) {
-            startDownloadSelected()
-        } else {
-            if (!DownloadEngine.isYoutubeUrl(url)) {
-                statusView.text = "Paste a valid https YouTube link first."
-                return
+        if (busy) {
+            if (analyzing) {
+                pendingDownload = true
+                appendLog("The download will start as soon as the analysis ends.")
             }
-            // No analysis needed: yt-dlp picks the formats itself. This skips one full extraction (the slow part).
-            val h = if (DownloadEngine.ffmpegReady) preferredHeight() else 0
-            startDownload(url, DownloadEngine.Option(h, false, 0L))
+            return
         }
+        val url = currentUrl()
+        if (currentInfo != null && url == analyzedUrl) startDownloadSelected() else analyze(true)
     }
 
     private fun startDownloadSelected() {
