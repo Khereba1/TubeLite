@@ -35,10 +35,18 @@ object DownloadEngine {
     @Volatile
     private var autoUpdated = false
 
-    /** height > 0: video of that height (+ best audio, merged). height <= 0 and not audioOnly: best single file. */
-    class Option(val height: Int, val audioOnly: Boolean, val bytes: Long)
+    /**
+     * height > 0: video of that height (+ best audio, merged). height <= 0 and not audioOnly: best single file.
+     * audioOnly: a specific audio stream ([formatId], [abr] kbps, [ext]) or, without formatId, the best m4a/audio.
+     */
+    class Option(
+        val height: Int, val audioOnly: Boolean, val bytes: Long,
+        val formatId: String? = null, val abr: Int = 0, val ext: String = ""
+    )
 
-    class Info(val title: String, val durationSec: Long, val options: List<Option>)
+    class Info(val id: String, val title: String, val durationSec: Long, val options: List<Option>)
+
+    private class AudioFmt(val id: String, val ext: String, val abr: Int, val bytes: Long)
 
     class Result(val ok: Boolean, val message: String, val file: File? = null)
 
@@ -157,6 +165,22 @@ object DownloadEngine {
         }
     }
 
+    /** Maps a raw yt-dlp error to a short explanation the user can read (string resource). */
+    fun friendlyErrorRes(message: String): Int {
+        val m = message.lowercase(Locale.ROOT)
+        return when {
+            m.contains("sign in to confirm") || m.contains("not a bot") -> R.string.dl_err_bot
+            m.contains("private video") || m.contains("members-only") || m.contains("join this channel") -> R.string.dl_err_private
+            m.contains("age-restricted") || m.contains("confirm your age") -> R.string.dl_err_age
+            m.contains("no space left") -> R.string.dl_err_space
+            m.contains("network is unreachable") || m.contains("name resolution") || m.contains("failed to resolve") ||
+                m.contains("timed out") -> R.string.dl_err_network
+            m.contains("requested format") -> R.string.dl_err_generic
+            m.contains("video unavailable") || m.contains("this video is not available") -> R.string.dl_err_unavailable
+            else -> R.string.dl_err_generic
+        }
+    }
+
     // ------------------------------------------------------------------ analysis
 
     fun analyze(context: Context, url: String, log: (String) -> Unit): Info {
@@ -184,11 +208,13 @@ object DownloadEngine {
     }
 
     private fun parseInfo(obj: JSONObject): Info {
+        val videoId = obj.optString("id", "")
         val title = obj.optString("title", "")
         val duration = obj.optLong("duration", 0L)
         val mp4Size = TreeMap<Int, Long>()
         val anySize = TreeMap<Int, Long>()
         var audioBytes = 0L
+        val audioFmts = LinkedHashMap<String, AudioFmt>() // one entry per (container, bitrate)
         val formats = obj.optJSONArray("formats")
         if (formats != null) {
             for (i in 0 until formats.length()) {
@@ -204,8 +230,14 @@ object DownloadEngine {
                 if (hasVideo && height > 0) {
                     anySize[height] = maxOf(anySize[height] ?: 0L, size)
                     if (ext == "mp4") mp4Size[height] = maxOf(mp4Size[height] ?: 0L, size)
-                } else if (hasAudio && !hasVideo && ext == "m4a") {
-                    audioBytes = maxOf(audioBytes, size)
+                } else if (hasAudio && !hasVideo && (ext == "m4a" || ext == "webm")) {
+                    if (ext == "m4a") audioBytes = maxOf(audioBytes, size)
+                    val fid = f.optString("format_id", "")
+                    val abr = f.optDouble("abr", 0.0).toInt()
+                    val key = ext + "-" + abr
+                    if (fid.isNotEmpty() && fid != "null" && !audioFmts.containsKey(key)) {
+                        audioFmts[key] = AudioFmt(fid, ext, abr, size)
+                    }
                 }
             }
         }
@@ -218,8 +250,14 @@ object DownloadEngine {
         } else {
             options.add(Option(0, false, 0L)) // without ffmpeg only a ready-made single file can be used
         }
-        options.add(Option(0, true, audioBytes))
-        return Info(title, duration, options)
+        // every audio stream YouTube offers, best bitrate first (m4a before webm/opus at the same bitrate)
+        val audioSorted = audioFmts.values.sortedWith(compareByDescending<AudioFmt> { it.abr }.thenBy { if (it.ext == "m4a") 0 else 1 })
+        if (audioSorted.isEmpty()) {
+            options.add(Option(0, true, audioBytes))
+        } else {
+            for (a in audioSorted.take(6)) options.add(Option(0, true, a.bytes, a.id, a.abr, a.ext))
+        }
+        return Info(videoId, title, duration, options)
     }
 
     // ------------------------------------------------------------------ download
@@ -248,7 +286,10 @@ object DownloadEngine {
         request.addOption("--no-mtime")
         request.addOption("--no-playlist")
         when {
-            option.audioOnly -> request.addOption("-f", "ba[ext=m4a]/ba")
+            option.audioOnly -> {
+                val fid = option.formatId
+                request.addOption("-f", if (fid != null && fid.isNotEmpty()) fid else "ba[ext=m4a]/ba")
+            }
             option.height > 0 && ffmpegReady -> {
                 val h = option.height
                 request.addOption(
@@ -276,13 +317,13 @@ object DownloadEngine {
     }
 
     /** Copies the file to Downloads/TubeLite (MediaStore, no permission needed). Returns the new Uri or null. */
-    fun publishToDownloads(context: Context, file: File): Uri? {
+    fun publishToDownloads(context: Context, file: File, audio: Boolean = false): Uri? {
         val resolver = context.applicationContext.contentResolver
         val mime = when (file.extension.lowercase(Locale.ROOT)) {
             "mp4" -> "video/mp4"
             "mkv" -> "video/x-matroska"
             "m4a" -> "audio/mp4"
-            "webm" -> "video/webm"
+            "webm" -> if (audio) "audio/webm" else "video/webm"
             else -> "application/octet-stream"
         }
         val values = ContentValues()

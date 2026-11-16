@@ -14,8 +14,8 @@ android {
         applicationId = "com.khereba1.tubelite"
         minSdk = 29
         targetSdk = 34
-        versionCode = 22
-        versionName = "1.21"
+        versionCode = 23
+        versionName = "1.22"
 
         // Only the phone's CPU type (the download engine ships native code per CPU type, which is big).
         ndk {
