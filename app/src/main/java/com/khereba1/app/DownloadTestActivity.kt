@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.format.Formatter
 import android.view.View
 import android.view.ViewGroup
@@ -44,6 +46,18 @@ class DownloadTestActivity : Activity() {
     @Volatile
     private var engineReady = false
     private var lastUiUpdate = 0L
+
+    // shows "Analyzing... 7s" so the wait is visible (yt-dlp needs several seconds per extraction on a phone)
+    private val ticker = Handler(Looper.getMainLooper())
+    private var phaseText: String? = null
+    private var phaseStart = 0L
+    private val tick = object : Runnable {
+        override fun run() {
+            val text = phaseText ?: return
+            statusView.text = text + "  " + ((System.currentTimeMillis() - phaseStart) / 1000) + "s"
+            ticker.postDelayed(this, 1000)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -112,6 +126,24 @@ class DownloadTestActivity : Activity() {
         setContentView(scroll)
         setBusy(true)
         startEngine()
+    }
+
+    private fun startPhase(text: String) {
+        ticker.removeCallbacks(tick)
+        phaseText = text
+        phaseStart = System.currentTimeMillis()
+        statusView.text = text
+        ticker.postDelayed(tick, 1000)
+    }
+
+    private fun endPhase() {
+        phaseText = null
+        ticker.removeCallbacks(tick)
+    }
+
+    override fun onDestroy() {
+        ticker.removeCallbacks(tick)
+        super.onDestroy()
     }
 
     private fun makeButton(text: String, onClick: () -> Unit): Button {
@@ -207,12 +239,16 @@ class DownloadTestActivity : Activity() {
         }
         setBusy(true)
         progressBar.progress = 0
-        statusView.text = "Analyzing the video..."
+        startPhase("Analyzing the video...")
+        val t0 = System.currentTimeMillis()
         Thread {
             try {
                 val result = DownloadEngine.analyze(applicationContext, url) { line -> uiLog(line) }
+                val secs = (System.currentTimeMillis() - t0) / 1000
                 runOnUiThread {
+                    endPhase()
                     showInfo(url, result)
+                    appendLog("Analysis took " + secs + "s")
                     setBusy(false)
                     if (thenDownload) startDownloadSelected()
                 }
@@ -220,6 +256,7 @@ class DownloadTestActivity : Activity() {
                 AppLog.log("ENGINE", "analyze failed", e)
                 val message = "Analysis failed: " + (e.message ?: e.toString())
                 runOnUiThread {
+                    endPhase()
                     statusView.text = message
                     appendLog(message)
                     setBusy(false)
@@ -293,7 +330,17 @@ class DownloadTestActivity : Activity() {
     private fun onDownloadClicked() {
         if (busy) return
         val url = currentUrl()
-        if (currentInfo != null && url == analyzedUrl) startDownloadSelected() else analyze(true)
+        if (currentInfo != null && url == analyzedUrl) {
+            startDownloadSelected()
+        } else {
+            if (!DownloadEngine.isYoutubeUrl(url)) {
+                statusView.text = "Paste a valid https YouTube link first."
+                return
+            }
+            // No analysis needed: yt-dlp picks the formats itself. This skips one full extraction (the slow part).
+            val h = if (DownloadEngine.ffmpegReady) preferredHeight() else 0
+            startDownload(url, DownloadEngine.Option(h, false, 0L))
+        }
     }
 
     private fun startDownloadSelected() {
@@ -305,11 +352,15 @@ class DownloadTestActivity : Activity() {
             statusView.text = "Choose a quality first."
             return
         }
-        val option = parsed.options[index]
-        val url = analyzedUrl
+        startDownload(analyzedUrl, parsed.options[index])
+    }
+
+    private fun startDownload(url: String, option: DownloadEngine.Option) {
+        if (busy) return
         setBusy(true)
         progressBar.progress = 0
-        statusView.text = "Starting..."
+        startPhase("Preparing the download...")
+        val t0 = System.currentTimeMillis()
         Thread {
             val result = DownloadEngine.download(
                 applicationContext, url, option, { p, eta, line -> onProgress(p, eta, line) }, { line -> uiLog(line) }
@@ -331,10 +382,13 @@ class DownloadTestActivity : Activity() {
                     "Downloaded (" + size + ") but could not copy to Downloads. File: " + file.absolutePath
                 }
             }
+            val secs = (System.currentTimeMillis() - t0) / 1000
             runOnUiThread {
+                endPhase()
                 if (result.ok) progressBar.progress = 100
                 statusView.text = message
                 appendLog(message)
+                appendLog("Total time " + secs + "s")
                 setBusy(false)
             }
         }.start()
@@ -345,6 +399,7 @@ class DownloadTestActivity : Activity() {
         if (now - lastUiUpdate < 250) return // keep the screen light
         lastUiUpdate = now
         runOnUiThread {
+            endPhase()
             val pct = progress.toInt().coerceIn(0, 100)
             progressBar.progress = pct
             statusView.text = "" + pct + "%   (ETA " + eta + "s)"
