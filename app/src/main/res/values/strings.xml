@@ -29,7 +29,7 @@
     <string name="dl_section_video">Video with sound</string>
     <string name="dl_section_audio">Audio only</string>
     <string name="dl_single_file">Best ready-made file (no merging)</string>
-    <string name="dl_audio_label">Audio %1$d kbps (%2$s)</string>
+    <string name="dl_audio_label">Audio %1$d kbps  •  %2$s</string>
     <string name="dl_audio_best">Audio (best available)</string>
     <string name="dl_status_ready">Ready.</string>
     <string name="dl_status_starting_engine">Starting the engine (the first time can take a while)...</string>
@@ -43,7 +43,7 @@
     <string name="dl_saved">Saved to Downloads/TubeLite: %1$s (%2$s)</string>
     <string name="dl_failed">Download failed</string>
     <string name="dl_cancelled">Download cancelled.</string>
-    <string name="dl_engine_info">yt-dlp %1$s  •  %2$s</string>
+    <string name="dl_engine_info">%1$s  •  %2$s</string>
     <string name="dl_ffmpeg_ok">ffmpeg ready</string>
     <string name="dl_ffmpeg_missing">ffmpeg not available (ready-made files only)</string>
     <string name="dl_engine_failed">The download engine failed to start</string>
@@ -59,4 +59,5 @@
     <string name="dl_err_unavailable">This video is not available.</string>
     <string name="dl_err_copy">The file was downloaded but could not be copied to Downloads. It is here:</string>
     <string name="dl_err_generic">Something went wrong. The details are in the log (Details).</string>
+    <string name="dl_audio_hint">m4a (AAC) plays everywhere. Opus (webm) is smaller but some players cannot open it.</string>
 </resources>

@@ -28,7 +28,7 @@
     <string name="dl_section_video">فيديو بصوت</string>
     <string name="dl_section_audio">صوت فقط</string>
     <string name="dl_single_file">أفضل ملف جاهز (من غير تركيب)</string>
-    <string name="dl_audio_label">صوت %1$d kbps (%2$s)</string>
+    <string name="dl_audio_label">صوت %1$d kbps  •  %2$s</string>
     <string name="dl_audio_best">صوت (أفضل متاح)</string>
     <string name="dl_status_ready">جاهز.</string>
     <string name="dl_status_starting_engine">جاري تشغيل المحرك (أول مرة ممكن تاخد وقت)...</string>
@@ -42,7 +42,7 @@
     <string name="dl_saved">اتحفظ في Downloads/TubeLite: %1$s (%2$s)</string>
     <string name="dl_failed">التحميل فشل</string>
     <string name="dl_cancelled">التحميل اتلغى.</string>
-    <string name="dl_engine_info">yt-dlp %1$s  •  %2$s</string>
+    <string name="dl_engine_info">%1$s  •  %2$s</string>
     <string name="dl_ffmpeg_ok">ffmpeg جاهز</string>
     <string name="dl_ffmpeg_missing">ffmpeg مش متاح (ملفات جاهزة بس)</string>
     <string name="dl_engine_failed">محرك التحميل ما اشتغلش</string>
@@ -58,4 +58,5 @@
     <string name="dl_err_unavailable">الفيديو ده مش متاح.</string>
     <string name="dl_err_copy">الملف اتحمّل بس ما اتنسخش لمجلد التنزيلات. مكانه:</string>
     <string name="dl_err_generic">حصل خطأ. التفاصيل في السجل (التفاصيل).</string>
+    <string name="dl_audio_hint">m4a (AAC) بيشتغل في أي مشغّل. أما Opus (webm) فأصغر بس بعض المشغلات مش بتفتحه.</string>
 </resources>

@@ -62,6 +62,9 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
   * `DownloadTestActivity.kt` (name kept from the first test version): the screen. Dark cards in the app's style, thumbnail (i.ytimg.com, fixed host, no redirects), qualities as radio
     buttons (video heights, then audio bitrates), default = highest video quality <= the app's default quality setting, Download/Cancel, Update (stable/nightly), collapsible log.
     The analysis starts by itself when the screen opens from a video; pressing Download during the analysis queues it.
+  * Notification: title = video title, large icon = square crop of the thumbnail (`DownloadEngine.loadThumbnail`, cached), subtext = chosen quality, text = percent + speed
+    (parsed from yt-dlp's progress line) + ETA, own small icon `ic_stat_download`. Tapping it opens the download screen in "running" mode (`applyMode`: only the video being
+    downloaded, no link/qualities). The finished notification opens the downloaded file itself (ACTION_VIEW on the MediaStore uri). The log shows "Average speed ...".
   * All texts are string resources dl_* in values and values-ar (keep both in sync).
   AUTO UPDATE: only inside `withAutoUpdate`: when analyze/download fails with something an update can fix (deny-list: bot check, private/unavailable video, no network,
   no space, cancel, age), the engine is updated ONCE per app session (stable channel) and the step is retried.
@@ -71,6 +74,8 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
   Rules agreed with the owner: NO cookies or account data are ever passed to yt-dlp; updates only by the user's button or the single automatic update after a failure,
   only through the library's official update, never in the background; the bundled version stays as fallback and the version is always shown. Only https YouTube
   links are accepted (`DownloadEngine.isYoutubeUrl`). The library is GPL-3.0 (fine for personal use; open the source if the APK is ever distributed).
+  Slow webm download observed (about 150 KB/s for a 7 MB opus file) while a VPN was on: cause not established (VPN, YouTube throttling of that stream, or the JS challenge);
+  compare the "Average speed" log line for m4a vs webm with the VPN off before changing anything. Idea not built: aria2c (multi-connection) via the library's aria2c module.
   Observed on the owner's phone: video+sound single-file download worked; audio-only failed until the engine was updated from inside the app (the bundled yt-dlp is old, so the
   auto update after a failure matters). Ideas not built yet: MP3 conversion, a "lite" (no download) and "full" build flavor with two release assets.
 - Error log: launcher-icon long-press shortcut AND a neutral "Error log" button in the quality dialog (player page).

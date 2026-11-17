@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -25,8 +24,6 @@ import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
  * The download screen (class name kept from the first test version). Analyzes a YouTube link (automatically when it
@@ -43,6 +40,7 @@ class DownloadTestActivity : Activity() {
 
     private lateinit var engineView: TextView
     private lateinit var urlBox: EditText
+    private lateinit var linkCard: LinearLayout
     private lateinit var infoCard: LinearLayout
     private lateinit var thumb: ImageView
     private lateinit var videoTitle: TextView
@@ -63,6 +61,8 @@ class DownloadTestActivity : Activity() {
     private var analyzedUrl = ""
     private var analyzedId = ""
     private var radioGroup: RadioGroup? = null
+    private var modeRunning = false
+    private var shownThumbId = ""
 
     @Volatile
     private var busy = false // analysis or engine update in progress
@@ -151,7 +151,7 @@ class DownloadTestActivity : Activity() {
         root.addView(engineView)
 
         // link
-        val linkCard = card()
+        linkCard = card()
         urlBox = EditText(this)
         urlBox.hint = getString(R.string.dl_link_hint)
         urlBox.setHintTextColor(Color.GRAY)
@@ -269,6 +269,36 @@ class DownloadTestActivity : Activity() {
         look(updateStableButton, engineReady && !busy && !downloading)
         look(updateNightlyButton, engineReady && !busy && !downloading)
         look(cancelButton, downloading)
+        applyMode()
+    }
+
+    /**
+     * While a download runs (also when the screen is opened from its notification) only the video being downloaded
+     * is shown; otherwise the link, the video and its qualities.
+     */
+    private fun applyMode() {
+        val running = DownloadService.running
+        if (running == modeRunning) return
+        modeRunning = running
+        if (running) {
+            linkCard.visibility = View.GONE
+            optionsCard.visibility = View.GONE
+            infoCard.visibility = View.VISIBLE
+            videoTitle.text = DownloadService.currentTitle
+            videoMeta.text = DownloadService.currentLabel
+            showThumb(DownloadService.currentId)
+        } else {
+            linkCard.visibility = View.VISIBLE
+            val info = currentInfo
+            if (info != null) {
+                fillInfo(info)
+                infoCard.visibility = View.VISIBLE
+                optionsCard.visibility = View.VISIBLE
+            } else {
+                infoCard.visibility = View.GONE
+                optionsCard.visibility = View.GONE
+            }
+        }
     }
 
     private fun setBusy(value: Boolean) {
@@ -302,7 +332,8 @@ class DownloadTestActivity : Activity() {
 
     private fun engineText(version: String): String {
         val ffmpeg = getString(if (DownloadEngine.ffmpegReady) R.string.dl_ffmpeg_ok else R.string.dl_ffmpeg_missing)
-        return getString(R.string.dl_engine_info, version, ffmpeg)
+        val name = if (version.startsWith("yt-dlp")) version else "yt-dlp " + version
+        return getString(R.string.dl_engine_info, name, ffmpeg)
     }
 
     private fun currentUrl(): String = urlBox.text.toString().trim()
@@ -411,7 +442,8 @@ class DownloadTestActivity : Activity() {
 
     private fun optionLabel(o: DownloadEngine.Option): String {
         val name = when {
-            o.audioOnly && o.abr > 0 -> getString(R.string.dl_audio_label, o.abr, o.ext)
+            o.audioOnly && o.abr > 0 ->
+                getString(R.string.dl_audio_label, o.abr, if (o.ext == "webm") "Opus (webm)" else "AAC (m4a)")
             o.audioOnly -> getString(R.string.dl_audio_best)
             o.height <= 0 -> getString(R.string.dl_single_file)
             else -> "" + o.height + "p"
@@ -431,11 +463,8 @@ class DownloadTestActivity : Activity() {
         currentInfo = result
         analyzedUrl = url
         analyzedId = result.id
-        videoTitle.text = result.title
-        videoMeta.text = formatDuration(result.durationSec)
+        fillInfo(result)
         infoCard.visibility = View.VISIBLE
-        thumb.setImageDrawable(null)
-        loadThumb(result.id)
 
         // default: the highest video quality that is not above the quality chosen in the app's settings
         val wanted = preferredHeight()
@@ -457,6 +486,7 @@ class DownloadTestActivity : Activity() {
             val header = label(getString(R.string.dl_section_audio), 13f, muted, true)
             header.setPadding(0, dp(10), 0, 0)
             group.addView(header)
+            group.addView(label(getString(R.string.dl_audio_hint), 11f, muted))
             for (i in audioIdx) group.addView(radio(i, result.options[i]))
         }
         group.check(100 + chosen)
@@ -464,6 +494,12 @@ class DownloadTestActivity : Activity() {
         optionsBox.addView(group)
         optionsCard.visibility = View.VISIBLE
         statusView.text = getString(R.string.dl_status_choose)
+    }
+
+    private fun fillInfo(result: DownloadEngine.Info) {
+        videoTitle.text = result.title
+        videoMeta.text = formatDuration(result.durationSec)
+        showThumb(result.id)
     }
 
     private fun radio(index: Int, o: DownloadEngine.Option): RadioButton {
@@ -475,22 +511,14 @@ class DownloadTestActivity : Activity() {
         return rb
     }
 
-    /** Public thumbnail of the video (fixed host, no cookies, no redirects). */
-    private fun loadThumb(id: String) {
-        if (!Regex("^[A-Za-z0-9_-]{11}$").matches(id)) return
+    private fun showThumb(id: String) {
+        shownThumbId = id
+        thumb.setImageDrawable(null)
+        if (id.isEmpty()) return
         Thread {
-            try {
-                val conn = URL("https://i.ytimg.com/vi/" + id + "/mqdefault.jpg").openConnection() as HttpURLConnection
-                conn.connectTimeout = 8000
-                conn.readTimeout = 8000
-                conn.instanceFollowRedirects = false
-                val bmp = conn.inputStream.use { BitmapFactory.decodeStream(it) }
-                conn.disconnect()
-                if (bmp != null) {
-                    runOnUiThread { if (!isDestroyed && analyzedId == id) thumb.setImageBitmap(bmp) }
-                }
-            } catch (e: Throwable) {
-                AppLog.log("ENGINE", "thumbnail failed", e)
+            val bmp = DownloadEngine.loadThumbnail(id) // public image, cached, fixed host
+            if (bmp != null) {
+                runOnUiThread { if (!isDestroyed && shownThumbId == id) thumb.setImageBitmap(bmp) }
             }
         }.start()
     }
@@ -531,6 +559,9 @@ class DownloadTestActivity : Activity() {
             .putExtra(DownloadService.EXTRA_HEIGHT, option.height)
             .putExtra(DownloadService.EXTRA_AUDIO, option.audioOnly)
             .putExtra(DownloadService.EXTRA_FORMAT_ID, option.formatId ?: "")
+            .putExtra(DownloadService.EXTRA_TITLE, currentInfo?.title ?: "")
+            .putExtra(DownloadService.EXTRA_LABEL, optionLabel(option))
+            .putExtra(DownloadService.EXTRA_VIDEO_ID, currentInfo?.id ?: "")
         try {
             progressBar.progress = 0
             statusView.text = getString(R.string.dl_notif_preparing)

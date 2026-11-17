@@ -2,6 +2,8 @@ package com.khereba1.app
 
 import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
@@ -9,6 +11,8 @@ import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import org.json.JSONObject
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Locale
 import java.util.TreeMap
 
@@ -45,6 +49,48 @@ object DownloadEngine {
     )
 
     class Info(val id: String, val title: String, val durationSec: Long, val options: List<Option>)
+
+    // Thumbnail of the last analyzed / downloaded video (shared by the screen and the notification).
+    @Volatile
+    var thumbId = ""
+
+    @Volatile
+    var thumbBitmap: Bitmap? = null
+
+    /** Blocking. Public thumbnail of the video: fixed host, no cookies, no redirects. */
+    fun loadThumbnail(id: String): Bitmap? {
+        if (!Regex("^[A-Za-z0-9_-]{11}$").matches(id)) return null
+        if (id == thumbId) {
+            val cached = thumbBitmap
+            if (cached != null) return cached
+        }
+        return try {
+            val conn = URL("https://i.ytimg.com/vi/" + id + "/mqdefault.jpg").openConnection() as HttpURLConnection
+            conn.connectTimeout = 8000
+            conn.readTimeout = 8000
+            conn.instanceFollowRedirects = false
+            val bmp = conn.inputStream.use { BitmapFactory.decodeStream(it) }
+            conn.disconnect()
+            if (bmp != null) {
+                thumbId = id
+                thumbBitmap = bmp
+            }
+            bmp
+        } catch (e: Throwable) {
+            AppLog.log("ENGINE", "thumbnail failed", e)
+            null
+        }
+    }
+
+    fun mimeFor(file: File, audio: Boolean): String {
+        return when (file.extension.lowercase(Locale.ROOT)) {
+            "mp4" -> "video/mp4"
+            "mkv" -> "video/x-matroska"
+            "m4a" -> "audio/mp4"
+            "webm" -> if (audio) "audio/webm" else "video/webm"
+            else -> "application/octet-stream"
+        }
+    }
 
     private class AudioFmt(val id: String, val ext: String, val abr: Int, val bytes: Long)
 
@@ -319,13 +365,7 @@ object DownloadEngine {
     /** Copies the file to Downloads/TubeLite (MediaStore, no permission needed). Returns the new Uri or null. */
     fun publishToDownloads(context: Context, file: File, audio: Boolean = false): Uri? {
         val resolver = context.applicationContext.contentResolver
-        val mime = when (file.extension.lowercase(Locale.ROOT)) {
-            "mp4" -> "video/mp4"
-            "mkv" -> "video/x-matroska"
-            "m4a" -> "audio/mp4"
-            "webm" -> if (audio) "audio/webm" else "video/webm"
-            else -> "application/octet-stream"
-        }
+        val mime = mimeFor(file, audio)
         val values = ContentValues()
         values.put(MediaStore.Downloads.DISPLAY_NAME, file.name)
         values.put(MediaStore.Downloads.MIME_TYPE, mime)
