@@ -87,6 +87,7 @@ object DownloadEngine {
             "mp4" -> "video/mp4"
             "mkv" -> "video/x-matroska"
             "m4a" -> "audio/mp4"
+            "opus", "ogg" -> "audio/ogg"
             "webm" -> if (audio) "audio/webm" else "video/webm"
             else -> "application/octet-stream"
         }
@@ -320,14 +321,13 @@ object DownloadEngine {
         }
     }
 
-    private fun downloadOnce(
-        context: Context, url: String, option: Option, onProgress: (Float, Long, String) -> Unit
-    ): Result {
-        val app = context.applicationContext
-        val dir = File(app.getExternalFilesDir(null) ?: app.filesDir, "downloads")
-        dir.mkdirs()
-        val before = (dir.listFiles() ?: emptyArray()).map { it.absolutePath }.toSet()
+    private fun conversionFailed(message: String): Boolean {
+        val m = message.lowercase(Locale.ROOT)
+        return m.contains("ffmpeg") || m.contains("ffprobe") || m.contains("postprocess") || m.contains("conver") ||
+            m.contains("muxer") || m.contains("encoder")
+    }
 
+    private fun buildRequest(url: String, dir: File, option: Option, toOpus: Boolean): YoutubeDLRequest {
         val request = YoutubeDLRequest(url)
         request.addOption("--no-mtime")
         request.addOption("--no-playlist")
@@ -335,6 +335,12 @@ object DownloadEngine {
             option.audioOnly -> {
                 val fid = option.formatId
                 request.addOption("-f", if (fid != null && fid.isNotEmpty()) fid else "ba[ext=m4a]/ba")
+                if (toOpus) {
+                    // YouTube keeps Opus audio inside a .webm file. Copy the same stream into a real .opus file:
+                    // no re-encoding, so it takes seconds and loses nothing.
+                    request.addOption("-x")
+                    request.addOption("--audio-format", "opus")
+                }
             }
             option.height > 0 && ffmpegReady -> {
                 val h = option.height
@@ -347,9 +353,26 @@ object DownloadEngine {
             else -> request.addOption("-f", "b[ext=mp4]/b")
         }
         request.addOption("-o", dir.absolutePath + "/%(title).80s [%(id)s].%(ext)s")
+        return request
+    }
 
-        YoutubeDL.getInstance().execute(request, PROCESS_ID) { progress, eta, line ->
-            onProgress(progress, eta, line)
+    private fun downloadOnce(
+        context: Context, url: String, option: Option, onProgress: (Float, Long, String) -> Unit
+    ): Result {
+        val app = context.applicationContext
+        val dir = File(app.getExternalFilesDir(null) ?: app.filesDir, "downloads")
+        dir.mkdirs()
+        val before = (dir.listFiles() ?: emptyArray()).map { it.absolutePath }.toSet()
+        val callback: (Float, Long, String) -> Unit = { progress, eta, line -> onProgress(progress, eta, line) }
+
+        val wantOpus = option.audioOnly && option.ext == "webm" && ffmpegReady
+        try {
+            YoutubeDL.getInstance().execute(buildRequest(url, dir, option, wantOpus), PROCESS_ID, callback)
+        } catch (e: Throwable) {
+            if (!wantOpus || !conversionFailed(e.message ?: "")) throw e
+            // The conversion step failed: keep the original .webm instead (the stream is usually already downloaded).
+            AppLog.log("ENGINE", "opus conversion failed, keeping webm", e)
+            YoutubeDL.getInstance().execute(buildRequest(url, dir, option, false), PROCESS_ID, callback)
         }
 
         val newest = (dir.listFiles() ?: emptyArray())

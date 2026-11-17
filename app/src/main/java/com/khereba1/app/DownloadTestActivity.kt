@@ -443,7 +443,10 @@ class DownloadTestActivity : Activity() {
     private fun optionLabel(o: DownloadEngine.Option): String {
         val name = when {
             o.audioOnly && o.abr > 0 ->
-                getString(R.string.dl_audio_label, o.abr, if (o.ext == "webm") "Opus (webm)" else "AAC (m4a)")
+                getString(
+                    R.string.dl_audio_label, o.abr,
+                    if (o.ext != "webm") "AAC (m4a)" else if (DownloadEngine.ffmpegReady) "Opus (.opus)" else "Opus (webm)"
+                )
             o.audioOnly -> getString(R.string.dl_audio_best)
             o.height <= 0 -> getString(R.string.dl_single_file)
             else -> "" + o.height + "p"

@@ -58,5 +58,5 @@
     <string name="dl_err_unavailable">الفيديو ده مش متاح.</string>
     <string name="dl_err_copy">الملف اتحمّل بس ما اتنسخش لمجلد التنزيلات. مكانه:</string>
     <string name="dl_err_generic">حصل خطأ. التفاصيل في السجل (التفاصيل).</string>
-    <string name="dl_audio_hint">m4a (AAC) بيشتغل في أي مشغّل. أما Opus (webm) فأصغر بس بعض المشغلات مش بتفتحه.</string>
+    <string name="dl_audio_hint">m4a (AAC) بيشتغل في أي مشغّل. أما Opus فأصغر وبنفس الجودة، بس بعض المشغلات والسيارات القديمة مش بتفتحه.</string>
 </resources>

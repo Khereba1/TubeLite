@@ -62,6 +62,9 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
   * `DownloadTestActivity.kt` (name kept from the first test version): the screen. Dark cards in the app's style, thumbnail (i.ytimg.com, fixed host, no redirects), qualities as radio
     buttons (video heights, then audio bitrates), default = highest video quality <= the app's default quality setting, Download/Cancel, Update (stable/nightly), collapsible log.
     The analysis starts by itself when the screen opens from a video; pressing Download during the analysis queues it.
+  * Opus audio: YouTube keeps Opus inside .webm. With ffmpeg ready, `buildRequest(toOpus = true)` adds `-x --audio-format opus` so yt-dlp REMUXES (copy, no re-encode) into a real
+    `.opus` file (mime audio/ogg). If that step fails (`conversionFailed`) the download is repeated without it and the .webm is kept. MP3 (re-encoding, needs an mp3 encoder in the
+    bundled ffmpeg: unverified) and `--embed-metadata` were discussed but are NOT built.
   * Notification: title = video title, large icon = square crop of the thumbnail (`DownloadEngine.loadThumbnail`, cached), subtext = chosen quality, text = percent + speed
     (parsed from yt-dlp's progress line) + ETA, own small icon `ic_stat_download`. Tapping it opens the download screen in "running" mode (`applyMode`: only the video being
     downloaded, no link/qualities). The finished notification opens the downloaded file itself (ACTION_VIEW on the MediaStore uri). The log shows "Average speed ...".
