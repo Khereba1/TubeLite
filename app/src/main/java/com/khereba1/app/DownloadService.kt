@@ -28,6 +28,7 @@ class DownloadService : Service() {
         const val EXTRA_HEIGHT = "height"
         const val EXTRA_AUDIO = "audio"
         const val EXTRA_FORMAT_ID = "format_id"
+        const val EXTRA_EXT = "ext"
         const val EXTRA_TITLE = "title"
         const val EXTRA_LABEL = "label"
         const val EXTRA_VIDEO_ID = "video_id"
@@ -83,7 +84,8 @@ class DownloadService : Service() {
         val height = i.getIntExtra(EXTRA_HEIGHT, 0)
         val audio = i.getBooleanExtra(EXTRA_AUDIO, false)
         val formatId = i.getStringExtra(EXTRA_FORMAT_ID) ?: ""
-        val option = DownloadEngine.Option(height, audio, 0L, if (formatId.isEmpty()) null else formatId)
+        val ext = i.getStringExtra(EXTRA_EXT) ?: ""
+        val option = DownloadEngine.Option(height, audio, 0L, if (formatId.isEmpty()) null else formatId, 0, ext)
         currentTitle = i.getStringExtra(EXTRA_TITLE) ?: ""
         currentLabel = i.getStringExtra(EXTRA_LABEL) ?: ""
         currentId = i.getStringExtra(EXTRA_VIDEO_ID) ?: ""

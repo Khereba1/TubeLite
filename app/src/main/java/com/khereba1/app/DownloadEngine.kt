@@ -1,5 +1,6 @@
 package com.khereba1.app
 
+import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
@@ -7,6 +8,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
+import android.webkit.MimeTypeMap
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import org.json.JSONObject
@@ -82,8 +84,16 @@ object DownloadEngine {
         }
     }
 
-    fun mimeFor(file: File, audio: Boolean): String {
-        return when (file.extension.lowercase(Locale.ROOT)) {
+    private const val DOWNLOADS_SUBDIR = "/TubeLite"
+
+    /**
+     * The MIME type must agree with the file extension, otherwise MediaStore glues a suffix after the extension
+     * ("name.webm (1)") and the file is broken. So Android's own extension map is asked first.
+     */
+    private fun mimeForExt(ext: String, audio: Boolean): String {
+        val known = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+        if (known != null) return known
+        return when (ext) {
             "mp4" -> "video/mp4"
             "mkv" -> "video/x-matroska"
             "m4a" -> "audio/mp4"
@@ -92,6 +102,8 @@ object DownloadEngine {
             else -> "application/octet-stream"
         }
     }
+
+    fun mimeFor(file: File, audio: Boolean): String = mimeForExt(file.extension.lowercase(Locale.ROOT), audio)
 
     private class AudioFmt(val id: String, val ext: String, val abr: Int, val bytes: Long)
 
@@ -314,7 +326,7 @@ object DownloadEngine {
         onProgress: (Float, Long, String) -> Unit, log: (String) -> Unit
     ): Result {
         return try {
-            withAutoUpdate(context, log) { downloadOnce(context, url, option, onProgress) }
+            withAutoUpdate(context, log) { downloadOnce(context, url, option, onProgress, log) }
         } catch (e: Throwable) {
             AppLog.log("ENGINE", "download failed", e)
             Result(false, e.message ?: e.toString())
@@ -357,7 +369,7 @@ object DownloadEngine {
     }
 
     private fun downloadOnce(
-        context: Context, url: String, option: Option, onProgress: (Float, Long, String) -> Unit
+        context: Context, url: String, option: Option, onProgress: (Float, Long, String) -> Unit, log: (String) -> Unit
     ): Result {
         val app = context.applicationContext
         val dir = File(app.getExternalFilesDir(null) ?: app.filesDir, "downloads")
@@ -366,12 +378,14 @@ object DownloadEngine {
         val callback: (Float, Long, String) -> Unit = { progress, eta, line -> onProgress(progress, eta, line) }
 
         val wantOpus = option.audioOnly && option.ext == "webm" && ffmpegReady
+        if (wantOpus) log("Audio: converting to .opus (copy, no re-encoding)")
         try {
             YoutubeDL.getInstance().execute(buildRequest(url, dir, option, wantOpus), PROCESS_ID, callback)
         } catch (e: Throwable) {
             if (!wantOpus || !conversionFailed(e.message ?: "")) throw e
             // The conversion step failed: keep the original .webm instead (the stream is usually already downloaded).
             AppLog.log("ENGINE", "opus conversion failed, keeping webm", e)
+            log("The .opus conversion failed, keeping the original .webm: " + (e.message ?: e.toString()).take(200))
             YoutubeDL.getInstance().execute(buildRequest(url, dir, option, false), PROCESS_ID, callback)
         }
 
@@ -385,25 +399,73 @@ object DownloadEngine {
         }
     }
 
-    /** Copies the file to Downloads/TubeLite (MediaStore, no permission needed). Returns the new Uri or null. */
+    private fun nameExists(resolver: ContentResolver, name: String): Boolean {
+        val c = resolver.query(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            arrayOf(MediaStore.Downloads.DISPLAY_NAME),
+            MediaStore.Downloads.DISPLAY_NAME + " = ? AND " + MediaStore.Downloads.RELATIVE_PATH + " = ?",
+            arrayOf(name, Environment.DIRECTORY_DOWNLOADS + DOWNLOADS_SUBDIR + "/"),
+            null
+        )
+        c?.use { return it.count > 0 }
+        return false
+    }
+
+    /** "name.ext", then "name (1).ext", "name (2).ext"...: the number always goes BEFORE the extension. */
+    private fun uniqueName(resolver: ContentResolver, base: String, ext: String): String {
+        var n = 0
+        while (n < 500) {
+            val name = if (n == 0) base + "." + ext else base + " (" + n + ")." + ext
+            if (!nameExists(resolver, name)) return name
+            n++
+        }
+        return base + "." + ext
+    }
+
+    private fun displayNameOf(resolver: ContentResolver, uri: Uri): String? {
+        resolver.query(uri, arrayOf(MediaStore.Downloads.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) return c.getString(0)
+        }
+        return null
+    }
+
+    /**
+     * Copies the file to Downloads/TubeLite (MediaStore, no permission needed). Returns the new Uri or null.
+     * Names are made unique here (number before the extension) and the MIME type always agrees with the extension.
+     * If Android still changes the extension of a .opus file, it is saved again as .ogg (same audio, known everywhere).
+     */
     fun publishToDownloads(context: Context, file: File, audio: Boolean = false): Uri? {
         val resolver = context.applicationContext.contentResolver
-        val mime = mimeFor(file, audio)
-        val values = ContentValues()
-        values.put(MediaStore.Downloads.DISPLAY_NAME, file.name)
-        values.put(MediaStore.Downloads.MIME_TYPE, mime)
-        values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/TubeLite")
-        values.put(MediaStore.Downloads.IS_PENDING, 1)
-        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
-        val out = resolver.openOutputStream(uri)
-        if (out == null) {
-            resolver.delete(uri, null, null)
-            return null
+        val base = file.nameWithoutExtension
+        val ext = file.extension.lowercase(Locale.ROOT)
+        val attempts = if (ext == "opus") listOf("opus", "ogg") else listOf(ext)
+        for (e in attempts) {
+            val last = e == attempts.last()
+            val name = uniqueName(resolver, base, e)
+            val values = ContentValues()
+            values.put(MediaStore.Downloads.DISPLAY_NAME, name)
+            values.put(MediaStore.Downloads.MIME_TYPE, mimeForExt(e, audio))
+            values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + DOWNLOADS_SUBDIR)
+            values.put(MediaStore.Downloads.IS_PENDING, 1)
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: continue
+            val actual = displayNameOf(resolver, uri)
+            val extensionKept = actual != null && actual.lowercase(Locale.ROOT).endsWith("." + e)
+            if (!extensionKept && !last) {
+                AppLog.log("ENGINE", "MediaStore changed " + name + " into " + actual + "; trying another extension")
+                resolver.delete(uri, null, null)
+                continue
+            }
+            val out = resolver.openOutputStream(uri)
+            if (out == null) {
+                resolver.delete(uri, null, null)
+                continue
+            }
+            out.use { o -> file.inputStream().use { it.copyTo(o) } }
+            val done = ContentValues()
+            done.put(MediaStore.Downloads.IS_PENDING, 0)
+            resolver.update(uri, done, null, null)
+            return uri
         }
-        out.use { o -> file.inputStream().use { it.copyTo(o) } }
-        val done = ContentValues()
-        done.put(MediaStore.Downloads.IS_PENDING, 0)
-        resolver.update(uri, done, null, null)
-        return uri
+        return null
     }
 }

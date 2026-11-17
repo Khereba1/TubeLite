@@ -562,6 +562,7 @@ class DownloadTestActivity : Activity() {
             .putExtra(DownloadService.EXTRA_HEIGHT, option.height)
             .putExtra(DownloadService.EXTRA_AUDIO, option.audioOnly)
             .putExtra(DownloadService.EXTRA_FORMAT_ID, option.formatId ?: "")
+            .putExtra(DownloadService.EXTRA_EXT, option.ext)
             .putExtra(DownloadService.EXTRA_TITLE, currentInfo?.title ?: "")
             .putExtra(DownloadService.EXTRA_LABEL, optionLabel(option))
             .putExtra(DownloadService.EXTRA_VIDEO_ID, currentInfo?.id ?: "")

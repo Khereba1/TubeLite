@@ -62,6 +62,10 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
   * `DownloadTestActivity.kt` (name kept from the first test version): the screen. Dark cards in the app's style, thumbnail (i.ytimg.com, fixed host, no redirects), qualities as radio
     buttons (video heights, then audio bitrates), default = highest video quality <= the app's default quality setting, Download/Cancel, Update (stable/nightly), collapsible log.
     The analysis starts by itself when the screen opens from a video; pressing Download during the analysis queues it.
+  * BUGS FIXED in 1.25 (keep in mind): (1) `DownloadService` created the `Option` WITHOUT the stream container (`ext`), so `wantOpus` was never true and webm audio was saved as
+    .webm: the extra `EXTRA_EXT` now carries it. (2) MediaStore: when the MIME type disagrees with the extension (e.g. "audio/webm" for ".webm", which Android maps to
+    "video/webm") it treats the extension as part of the name and a duplicate becomes "name.webm (1)" (broken file). `publishToDownloads` now takes the MIME type from
+    `MimeTypeMap` (fallback table), makes names unique itself (number BEFORE the extension) and, if Android still changes a .opus extension, saves it again as .ogg.
   * Opus audio: YouTube keeps Opus inside .webm. With ffmpeg ready, `buildRequest(toOpus = true)` adds `-x --audio-format opus` so yt-dlp REMUXES (copy, no re-encode) into a real
     `.opus` file (mime audio/ogg). If that step fails (`conversionFailed`) the download is repeated without it and the .webm is kept. MP3 (re-encoding, needs an mp3 encoder in the
     bundled ffmpeg: unverified) and `--embed-metadata` were discussed but are NOT built.
