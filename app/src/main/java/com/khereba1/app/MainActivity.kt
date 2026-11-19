@@ -490,6 +490,7 @@ class MainActivity : ComponentActivity() {
         playerLayer.animate().translationY(0f).setDuration(220)
             .withEndAction {
                 if (playerExpanded) {
+                    refreshPlayer(true) // make sure the video layer sits exactly under the top bar
                     // The player now covers the browse page: stop its previews/Shorts and hide it (no overlapping videos).
                     browseView.evaluateJavascript(
                         "document.querySelectorAll('video').forEach(function(v){try{v.pause()}catch(e){}})", null
@@ -635,14 +636,18 @@ class MainActivity : ComponentActivity() {
     }
 
     /** After returning to the app the video surface can show stale frames (sound is fine): nudge it to redraw. */
-    private fun refreshPlayer() {
+    private fun refreshPlayer(always: Boolean = false) {
         val pv = playerView ?: return
+        // [always]: also for a paused video. Used after the slide-in and after leaving fullscreen: the video layer was once seen
+        // detached from the top bar (a transparent gap) after such a layout change.
+        val cond = if (always) "v" else "v&&!v.paused"
         handler.postDelayed({
             if (playerView === pv) {
                 pv.invalidate()
                 pv.evaluateJavascript(
                     "(function(){var v=document.querySelector('video');" +
-                        "if(v&&!v.paused){v.style.display='none';void v.offsetHeight;v.style.display='';}})()",
+                        "if(" + cond + "){v.style.display='none';void v.offsetHeight;v.style.display='';" +
+                        "window.dispatchEvent(new Event('resize'));}})()",
                     null
                 )
             }
@@ -797,6 +802,7 @@ class MainActivity : ComponentActivity() {
         val lp = window.attributes
         lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         window.attributes = lp
+        refreshPlayer(true)
     }
 
     private fun showCustomView(view: View, callback: WebChromeClient.CustomViewCallback?) {

@@ -16,7 +16,7 @@
     <string name="settings_video_quality">Default video quality</string>
     <string name="settings_shorts_quality">Default Shorts quality</string>
     <string name="settings_speed">Default playback speed</string>
-    <string name="settings_download_test">Download video / audio (experimental)</string>
+    <string name="settings_download_test">Download video / audio</string>
     <string name="dl_title">Download</string>
     <string name="dl_engine_title">Download engine</string>
     <string name="dl_link_hint">YouTube video link</string>

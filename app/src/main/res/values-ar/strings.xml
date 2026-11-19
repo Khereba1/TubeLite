@@ -15,7 +15,7 @@
     <string name="settings_video_quality">جودة الفيديو الافتراضية</string>
     <string name="settings_shorts_quality">جودة الريلز (Shorts) الافتراضية</string>
     <string name="settings_speed">سرعة التشغيل الافتراضية</string>
-    <string name="settings_download_test">تحميل فيديو / صوت (تجريبي)</string>
+    <string name="settings_download_test">تحميل فيديو / صوت</string>
     <string name="dl_title">تحميل</string>
     <string name="dl_engine_title">محرك التحميل</string>
     <string name="dl_link_hint">رابط فيديو يوتيوب</string>

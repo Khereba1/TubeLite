@@ -100,6 +100,11 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code
   first `playing`. The log line "quality X set N ms after page start (player was at Y)" shows the timing. Shorts poll every 400 ms (cheap early return). If it is still late, the next idea
   is to write YouTube's own localStorage key `yt-player-quality` (we currently block writes to it; both WebViews share it, which caused the Shorts leak) before the player starts.
 - HEADPHONES (1.27): `PlaybackService` registers `ACTION_AUDIO_BECOMING_NOISY` (not exported receiver) and sends "pause" while playing (headphones unplugged, Bluetooth lost).
+- GAP GLITCH (1.28): once the player's video layer was seen detached from the top bar (a transparent gap of about 30dp; healed by restarting the app; cause unknown, maybe the video layer after
+  a layout change). `refreshPlayer(true)` (display toggle + resize event, also for a paused video) now runs after the slide-in animation and after leaving fullscreen, and inject.js `checkGap()`
+  (3 s timer, player page) logs "gap? video.top=... bar.bottom=... vvOffsetTop=..." at most once a minute and fires a resize event. If the log shows a real gap in the DOM numbers the page is wrong;
+  if the numbers are normal only the video layer is displaced. The selectors `ytm-mobile-topbar-renderer, header` are a guess.
+- A friend's phone (realme RMX5377, Android 16, English) once showed the buttons over the video; it healed by itself on the old version (probably a temporary YouTube layout). Not investigated further.
 - KNOWN, NOT FIXED: the two player buttons are positioned with fixed dp (pill: 7dp from top, settings: 48dp at the top right/left) assuming YouTube's 48dp top bar. On other phones/YouTube
   layouts the page can differ (video starts at the top, no bar). Planned fix: inject.js measures the real "more" button / bar and reports the rect over the bridge, Kotlin places the buttons from it.
   Unused: Compose plugin and dependencies are still in build.gradle.kts (no Compose code exists); removing them also needs `androidx.activity:activity` for ComponentActivity.

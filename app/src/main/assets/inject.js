@@ -444,6 +444,31 @@
   document.addEventListener('DOMContentLoaded', reportDir);
 
   var qPlayingId = '';
+
+  /* ---- player: diagnostic for the "gap between the top bar and the video" glitch (seen once, cause unknown) ----
+     Logs the numbers (at most once a minute) and nudges the layout with a resize event. At scroll 0 the video must start right
+     under the top bar, so a gap there is never normal. The log tells whether the page itself is wrong or only the video layer. */
+  var lastGapLog = 0;
+  function checkGap() {
+    try {
+      var v = document.querySelector('video');
+      var h = document.querySelector('ytm-mobile-topbar-renderer, header');
+      if (!v || !h) return;
+      var hr = h.getBoundingClientRect(), vr = v.getBoundingClientRect();
+      if (hr.height < 20 || hr.bottom < 20 || vr.height < 20) return; // no visible top bar: nothing to compare
+      var vv = window.visualViewport;
+      var gap = vr.top - hr.bottom;
+      var off = vv ? vv.offsetTop : 0;
+      if ((gap > 24 && (window.scrollY || 0) < 2) || Math.abs(off) > 1) {
+        var now = Date.now();
+        if (now - lastGapLog < 60000) return;
+        lastGapLog = now;
+        dbg('gap? video.top=' + Math.round(vr.top) + ' bar.bottom=' + Math.round(hr.bottom) + ' scrollY=' + Math.round(window.scrollY || 0) +
+          ' vvOffsetTop=' + Math.round(off) + ' inner=' + window.innerWidth + 'x' + window.innerHeight);
+        window.dispatchEvent(new Event('resize'));
+      }
+    } catch (e) {}
+  }
   // Media events instead of constant polling: light on CPU and battery.
   ['play', 'playing', 'pause', 'ended', 'emptied', 'loadstart', 'loadedmetadata', 'durationchange', 'seeked', 'ratechange']
     .forEach(function (t) {
@@ -456,6 +481,7 @@
   setInterval(function () {
     var cid = curId();
     if (cid !== '' && cid !== qualAppliedId) kickQuality();
+    checkGap();
     report(false); applyQuality(false); applySpeed(false); ensureUnmuted(); reportDir();
   }, 3000); // safety net: title changes, missed events
   setInterval(skipAd, 1000);        // safety net: ads that appear without a media event
