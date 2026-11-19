@@ -27,6 +27,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -47,6 +48,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.webkit.ScriptHandler
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -87,6 +89,7 @@ private fun isWatchUrl(url: String?): Boolean {
 class MainActivity : ComponentActivity() {
 
     private lateinit var root: FrameLayout
+    private lateinit var content: LinearLayout
     private lateinit var browseView: YtWebView
     private var playerView: YtWebView? = null
     private lateinit var playerLayer: FrameLayout
@@ -112,6 +115,12 @@ class MainActivity : ComponentActivity() {
     private val stopServiceTask = Runnable { stopService(Intent(this, PlaybackService::class.java)) }
     private var isPlaying = false
     private var lastArtId = ""
+
+    private val bridgeOrigins = setOf("https://m.youtube.com", "https://www.youtube.com")
+
+    // The saved settings are handed to each page by its own small document-start script, which is registered again
+    // after every settings change (a baked-in copy would stay stale for the next page load).
+    private val prefsHandlers = HashMap<WebView, ScriptHandler>()
 
     private var injectScript = ""
     private var userAgent = ""
@@ -157,7 +166,7 @@ class MainActivity : ComponentActivity() {
 
         browseView = createWebView("browse")
         miniBar = buildMiniBar()
-        val content = LinearLayout(this)
+        content = LinearLayout(this)
         content.orientation = LinearLayout.VERTICAL
         content.addView(browseView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         content.addView(
@@ -251,6 +260,7 @@ class MainActivity : ComponentActivity() {
         PlaybackService.controller = null
         PlaybackService.art = null
         stopService(Intent(this, PlaybackService::class.java))
+        prefsHandlers.clear()
         try {
             playerView?.let {
                 playerLayer.removeView(it)
@@ -306,24 +316,41 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun installBridge(wv: WebView, role: String) {
-        val origins = setOf("https://m.youtube.com", "https://www.youtube.com")
         try {
             if (bridgeSupported) {
                 // The only way a page can talk to the app: a text message, from YouTube origins only.
                 WebViewCompat.addWebMessageListener(
-                    wv, "TubeBridge", origins,
+                    wv, "TubeBridge", bridgeOrigins,
                     WebViewCompat.WebMessageListener { _, message, _, isMainFrame, _ ->
                         if (isMainFrame) handleMessage(role, message.data ?: "")
                     }
                 )
             }
             if (injectScript.isNotEmpty() && documentStartSupported) {
-                WebViewCompat.addDocumentStartJavaScript(
-                    wv, "window.__tubeRole='" + role + "';" + prefsScript() + "\n" + injectScript, origins
-                )
+                WebViewCompat.addDocumentStartJavaScript(wv, "window.__tubeRole='" + role + "';\n" + injectScript, bridgeOrigins)
+                registerPrefsScript(wv)
             }
         } catch (e: Throwable) {
             AppLog.log("INJECT", "Bridge/script setup failed", e)
+        }
+    }
+
+    /** (Re)registers the document-start script that carries the current settings, replacing the previous one. */
+    private fun registerPrefsScript(wv: WebView) {
+        if (!documentStartSupported) return
+        try {
+            prefsHandlers.remove(wv)?.remove()
+            prefsHandlers[wv] = WebViewCompat.addDocumentStartJavaScript(wv, prefsScript(), bridgeOrigins)
+        } catch (e: Throwable) {
+            AppLog.log("INJECT", "Settings script setup failed", e)
+        }
+    }
+
+    private fun forgetPrefsScript(wv: WebView) {
+        try {
+            prefsHandlers.remove(wv)?.remove()
+        } catch (e: Throwable) {
+            // the view is going away anyway
         }
     }
 
@@ -488,6 +515,7 @@ class MainActivity : ComponentActivity() {
         val pv = playerView ?: return
         playerView = null
         playerExpanded = false
+        forgetPrefsScript(pv)
         try {
             playerLayer.removeView(pv)
             pv.destroy()
@@ -504,6 +532,23 @@ class MainActivity : ComponentActivity() {
         PlaybackService.art = null
         handler.removeCallbacks(stopServiceTask)
         stopService(Intent(this, PlaybackService::class.java))
+    }
+
+    /** The browse page's renderer died (usually the system reclaimed memory): build a fresh page instead of crashing. */
+    private fun recreateBrowse() {
+        val old = browseView
+        val index = content.indexOfChild(old).coerceAtLeast(0)
+        forgetPrefsScript(old)
+        try {
+            content.removeView(old)
+            old.destroy()
+        } catch (e: Throwable) {
+            AppLog.log("MAIN", "old browse page cleanup failed", e)
+        }
+        browseView = createWebView("browse")
+        content.addView(browseView, index, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        browseView.visibility = if (playerExpanded) View.INVISIBLE else View.VISIBLE
+        browseView.loadUrl(HOME_URL)
     }
 
     private fun runCommand(cmd: String) {
@@ -541,6 +586,8 @@ class MainActivity : ComponentActivity() {
             .putString("shorts_quality", shortsQuality)
             .putString("speed", speed)
             .apply()
+        playerView?.let { registerPrefsScript(it) }
+        registerPrefsScript(browseView)
         val js = prefsScript() + "window.__tubeApplyPrefs&&window.__tubeApplyPrefs()"
         playerView?.evaluateJavascript(js, null)
         browseView.evaluateJavascript(js, null)
@@ -863,6 +910,26 @@ class MainActivity : ComponentActivity() {
             ) {
                 view.evaluateJavascript("window.__tubeRole='" + role + "';" + prefsScript() + "\n" + injectScript, null)
             }
+        }
+
+        // Without this the whole app is killed when the WebView's renderer process dies (typical while playing in the
+        // background on a phone that is short of memory).
+        override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+            AppLog.log("WEB", "Render process gone (" + role + ", crashed=" + detail.didCrash() + ")")
+            handler.post {
+                try {
+                    if (view === playerView) {
+                        closePlayer()
+                        Toast.makeText(this@MainActivity, R.string.load_error, Toast.LENGTH_SHORT).show()
+                    } else if (view === browseView) {
+                        recreateBrowse()
+                        Toast.makeText(this@MainActivity, R.string.load_error, Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Throwable) {
+                    AppLog.log("WEB", "recovery after renderer loss failed", e)
+                }
+            }
+            return true
         }
 
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {

@@ -372,7 +372,7 @@
      The app uses it to put its quality button over the site's "more" button (right on LTR pages, left on RTL pages).
      Layout is checked first (the YouTube logo is the widest link in the 64px top strip; on the right half = mirrored),
      then the page language, then dir attributes. "how" only helps debugging (it goes to the in-app log). */
-  var lastDir = '';
+  var lastDir = '', dirUrl = '', dirDone = false, dirTries = 0, dirLastAt = 0;
   function detectRtl() {
     try {
       var w = window.innerWidth || document.documentElement.clientWidth || 0;
@@ -394,10 +394,20 @@
     } catch (e) {}
     return { rtl: false, how: 'default' };
   }
+  // Measuring touches every link/button of the page (forces layout), so it is rate-limited, stops as soon as the
+  // layout measurement succeeded, and starts again only when the page URL changes.
   function reportDir() {
     try {
       if (!window.TubeBridge) return;
+      var href = location.href;
+      if (href !== dirUrl) { dirUrl = href; dirDone = false; dirTries = 0; }
+      if (dirDone) return;
+      var nowMs = Date.now();
+      if (nowMs - dirLastAt < 1500) return;
+      dirLastAt = nowMs;
+      if (++dirTries > 20) { dirDone = true; return; }
       var r = detectRtl();
+      if (r.how === 'layout') dirDone = true;
       var msg = 'dir|' + (r.rtl ? 'rtl' : 'ltr') + '|' + r.how;
       if (msg !== lastDir) { lastDir = msg; window.TubeBridge.postMessage(msg); }
     } catch (e) {}

@@ -8,10 +8,11 @@ A private WebView wrapper around m.youtube.com for ONE owner who signs into his 
 Features: background playback (foreground service + media notification), ad blocking (network rules + bundled page script),
 fullscreen video (swipe gestures, keep-screen-on), Picture-in-Picture (Home while fullscreen), opens youtube links. Android app, Kotlin (View-based, no Compose UI), source package `com.khereba1.app`,
 applicationId `com.khereba1.tubelite`. minSdk 29, compileSdk 35. UI languages: Arabic + English (strings only: notification, toasts).
-Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compiled or run by the AI that wrote it.
+Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code cannot compile or run it: the owner builds through GitHub Actions and tests on his phone (older versions are known to run there; changes of the latest version are untested until he reports).
 
 ## SECURITY RULES (do not break, the owner logs into his account here)
-1. NEVER load JavaScript or any code from the internet (no CDN, no `@latest`). All page script lives in `assets/inject.js`.
+1. NEVER load JavaScript or any code from the internet into the WebView (no CDN, no `@latest`). All page script lives in `assets/inject.js`.
+   (Known, accepted exception outside the WebView: the download engine's own yt-dlp update fetches yt-dlp code; it never sees cookies or account data.)
 2. NEVER strip or rewrite Content-Security-Policy, and NEVER proxy page requests through app code.
 3. NEVER use `addJavascriptInterface`. The only app<->page channel is `WebViewCompat.addWebMessageListener("TubeBridge")`,
    restricted to https://m.youtube.com and https://www.youtube.com. It accepts ONLY short text messages: the player state
@@ -19,7 +20,7 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
    Every URL is re-validated in Kotlin (https + youtube host) before use, and commands to the page go through COMMAND_REGEX.
 4. NEVER expose cookies, tokens or any account data to JS or to any file/log. No `getCookie` helper.
 5. Main-frame navigation is limited to youtube.com / google.com subdomains over https (`isAllowedHost` in MainActivity.kt); everything else goes to the external browser or is blocked.
-6. Do not add permissions beyond: INTERNET, FOREGROUND_SERVICE, FOREGROUND_SERVICE_MEDIA_PLAYBACK, POST_NOTIFICATIONS.
+6. Do not add permissions beyond: INTERNET, FOREGROUND_SERVICE, FOREGROUND_SERVICE_MEDIA_PLAYBACK, FOREGROUND_SERVICE_DATA_SYNC (downloads), POST_NOTIFICATIONS.
    No microphone/camera/location (the WebChromeClient does not override onPermissionRequest on purpose).
 7. Keep `allowBackup=false`, `usesCleartextTraffic=false`, mixed content NEVER_ALLOW, file access off.
 8. Signing key only from GitHub Secrets (see below). Never the public AOSP test key.
@@ -43,7 +44,8 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
   button (top right on an LTR page, top left on an RTL/Arabic page: the page reports "dir|rtl|ltr", see `applyDirection`) = SETTINGS menu
   (`showSettingsDialog`): default video quality, default Shorts quality, default playback speed, error log. Saved in SharedPreferences "tubelite_prefs"
   (keys quality, shorts_quality, speed; values validated against fixed lists) and sent to BOTH pages by `prefsScript()` (document-start prefix, onPageFinished,
-  and `window.__tubeApplyPrefs()` after a change). Player page: `applyQuality` / `applySpeed` once per video id (a manual change inside YouTube sticks for that video).
+  and `window.__tubeApplyPrefs()` after a change). Since 1.26 the settings travel in their OWN document-start script per WebView (`registerPrefsScript`, handle kept in
+  `prefsHandlers`, removed and added again on every change, forgotten when a page is destroyed); the role + inject.js script is static. Player page: `applyQuality` / `applySpeed` once per video id (a manual change inside YouTube sticks for that video).
   Browse page: Shorts play there, so `applyShorts` (inject.js) applies the Shorts quality and forces 1x. Shorts speed is always 1x (not configurable).
   Picks made inside YouTube's own menu are NOT detected. Unconfirmed on a real device: whether the player API call actually changes the quality.
 - Window insets: the activity is ALWAYS edge-to-edge (`setDecorFitsSystemWindows(false)`, cutout mode SHORT_EDGES, set once in onCreate). `root` has an insets
@@ -85,6 +87,17 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. Nothing here was ever compi
   compare the "Average speed" log line for m4a vs webm with the VPN off before changing anything. Idea not built: aria2c (multi-connection) via the library's aria2c module.
   Observed on the owner's phone: video+sound single-file download worked; audio-only failed until the engine was updated from inside the app (the bundled yt-dlp is old, so the
   auto update after a failure matters). Ideas not built yet: MP3 conversion, a "lite" (no download) and "full" build flavor with two release assets.
+- RENDERER LOSS (1.26): `TubeClient.onRenderProcessGone` returns true (otherwise Android kills the whole app). Player page: `closePlayer()`. Browse page: `recreateBrowse()` builds a new
+  browse WebView in `content` (a field now) and loads the home page. Both show the `load_error` toast and log "Render process gone".
+- `configChanges` also contains `locale|layoutDirection` (1.26): a language change no longer recreates the activity (which destroyed the player and stopped playback).
+- DOWNLOAD SPEED (1.26): the analysis (`--dump-single-json`) is saved to `cacheDir/info/<id>.json` and the download runs `--load-info-json <file>` WITHOUT a url, so the video is
+  extracted only once (before, the download extracted it again: the second long wait). Valid for 30 min (stream links expire); if that download fails with anything that is not on the
+  deny-list it falls back once to the normal url download. `YoutubeDLRequest(emptyList<String>())` is used for the url-less request (unverified against the library source).
+  A cancel (`DownloadEngine.cancelRequested`) never triggers the auto update or a retry. Partial files (.part/.ytdl) older than 24 h are removed at the start of a download.
+  Multi-threading does not speed up the analysis (yt-dlp is single-threaded Python); `-N` (concurrent fragments) only helps fragmented formats, aria2c is the idea for the download itself.
+- KNOWN, NOT FIXED: the two player buttons are positioned with fixed dp (pill: 7dp from top, settings: 48dp at the top right/left) assuming YouTube's 48dp top bar. On other phones/YouTube
+  layouts the page can differ (video starts at the top, no bar). Planned fix: inject.js measures the real "more" button / bar and reports the rect over the bridge, Kotlin places the buttons from it.
+  Unused: Compose plugin and dependencies are still in build.gradle.kts (no Compose code exists); removing them also needs `androidx.activity:activity` for ComponentActivity.
 - Error log: launcher-icon long-press shortcut AND a neutral "Error log" button in the quality dialog (player page).
 - Zoom-to-fill (`setZoom` in inject.js): computes the picture size from `videoWidth/videoHeight`, then scales the video's PARENT container with a rule in our own
   stylesheet (`.__tube_zoom{transform:scale(s) !important}`), because YouTube rewrites the <video> element's inline style. If the container scale changes nothing it

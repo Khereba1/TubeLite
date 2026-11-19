@@ -59,6 +59,13 @@ class DownloadService : Service() {
     private var cancelRequested = false
     private var lastNotify = 0L
 
+    // last progress text/percent, so a repeated start request does not reset the notification to "Preparing"
+    @Volatile
+    private var lastText = ""
+
+    @Volatile
+    private var lastPct = -1
+
     @Volatile
     private var largeIcon: Bitmap? = null
 
@@ -73,8 +80,11 @@ class DownloadService : Service() {
         if (i.action != ACTION_START) return START_NOT_STICKY
 
         // startForeground must be called right after startForegroundService()
+        if (running) {
+            startForegroundNow(buildProgress(if (lastText.isNotEmpty()) lastText else getString(R.string.dl_notif_preparing), lastPct))
+            return START_NOT_STICKY
+        }
         startForegroundNow(buildProgress(getString(R.string.dl_notif_preparing), -1))
-        if (running) return START_NOT_STICKY
 
         val url = i.getStringExtra(EXTRA_URL) ?: ""
         if (!DownloadEngine.isYoutubeUrl(url)) {
@@ -93,6 +103,8 @@ class DownloadService : Service() {
 
         running = true
         cancelRequested = false
+        lastText = ""
+        lastPct = -1
         publish(getString(R.string.dl_notif_preparing), -1, false)
         Thread { work(url, option) }.start()
         return START_NOT_STICKY
@@ -185,6 +197,8 @@ class DownloadService : Service() {
 
     private fun publish(text: String, pct: Int, finished: Boolean) {
         if (!finished) {
+            lastText = text
+            lastPct = pct
             try {
                 getSystemService(NotificationManager::class.java).notify(NOTIF_PROGRESS, buildProgress(text, pct))
             } catch (e: Throwable) {

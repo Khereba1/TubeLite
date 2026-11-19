@@ -41,6 +41,11 @@ object DownloadEngine {
     @Volatile
     private var autoUpdated = false
 
+    // Set by cancel(), cleared when the next analysis/download starts. A cancelled run must never trigger the
+    // automatic update + retry, and never fall back to a second attempt.
+    @Volatile
+    private var cancelRequested = false
+
     /**
      * height > 0: video of that height (+ best audio, merged). height <= 0 and not audioOnly: best single file.
      * audioOnly: a specific audio stream ([formatId], [abr] kbps, [ext]) or, without formatId, the best m4a/audio.
@@ -111,7 +116,11 @@ object DownloadEngine {
 
     // The analysis of a video is kept in memory for a while, so opening the download screen again is instant
     // and YouTube is not asked twice for the same video.
-    private class Cached(val time: Long, val info: Info)
+    // [file] = yt-dlp's complete answer for the video (JSON). The download reads it with --load-info-json, so the
+    // video is NOT extracted a second time (that was the long wait between "analysis done" and "download starts").
+    private class Cached(val time: Long, val info: Info, val file: File?)
+
+    private class Analysis(val info: Info, val file: File?)
 
     private val cache = HashMap<String, Cached>()
     private const val CACHE_MS = 30 * 60 * 1000L
@@ -137,6 +146,7 @@ object DownloadEngine {
         return try {
             val app = context.applicationContext
             YoutubeDL.getInstance().init(app)
+            purgeInfoFiles(app)
             ready = true
             initError = null
             initFfmpeg(app)
@@ -180,10 +190,12 @@ object DownloadEngine {
         val channel = if (nightly) YoutubeDL.UpdateChannel._NIGHTLY else YoutubeDL.UpdateChannel._STABLE
         val status = YoutubeDL.getInstance().updateYoutubeDL(context.applicationContext, channel)
         synchronized(cache) { cache.clear() } // a new engine may see other formats
+        purgeInfoFiles(context.applicationContext)
         return status?.toString() ?: "?"
     }
 
     fun cancel() {
+        cancelRequested = true
         try {
             YoutubeDL.getInstance().destroyProcessById(PROCESS_ID)
         } catch (e: Throwable) {
@@ -209,7 +221,7 @@ object DownloadEngine {
             return block()
         } catch (e: Throwable) {
             val message = e.message ?: e.toString()
-            if (autoUpdated || !fixableByUpdate(message)) throw e
+            if (cancelRequested || autoUpdated || !fixableByUpdate(message)) throw e
             autoUpdated = true
             log("Failed. Updating the engine once, then trying again...")
             try {
@@ -248,12 +260,24 @@ object DownloadEngine {
             val c = cache[key]
             if (c != null && System.currentTimeMillis() - c.time < CACHE_MS) return c.info
         }
-        val info = withAutoUpdate(context, log) { analyzeOnce(url) }
-        synchronized(cache) { cache[key] = Cached(System.currentTimeMillis(), info) }
-        return info
+        cancelRequested = false
+        val analysis = withAutoUpdate(context, log) { analyzeOnce(context.applicationContext, url) }
+        synchronized(cache) { cache[key] = Cached(System.currentTimeMillis(), analysis.info, analysis.file) }
+        return analysis.info
     }
 
-    private fun analyzeOnce(url: String): Info {
+    private fun infoDir(app: Context): File = File(app.cacheDir, "info")
+
+    /** The saved analyses only make sense inside one app session (the in-memory cache is gone after a restart). */
+    private fun purgeInfoFiles(app: Context) {
+        try {
+            infoDir(app).listFiles()?.forEach { it.delete() }
+        } catch (e: Throwable) {
+            AppLog.log("ENGINE", "cleaning saved analyses failed", e)
+        }
+    }
+
+    private fun analyzeOnce(app: Context, url: String): Analysis {
         val request = YoutubeDLRequest(url)
         request.addOption("--dump-single-json")
         request.addOption("--no-playlist")
@@ -263,7 +287,42 @@ object DownloadEngine {
         val start = text.indexOf('{')
         val end = text.lastIndexOf('}')
         if (start < 0 || end <= start) throw IllegalStateException("yt-dlp returned no video information")
-        return parseInfo(JSONObject(text.substring(start, end + 1)))
+        val json = text.substring(start, end + 1)
+        val info = parseInfo(JSONObject(json))
+        var saved: File? = null
+        try {
+            val dir = infoDir(app)
+            dir.mkdirs()
+            val f = File(dir, videoKey(url).replace(Regex("[^A-Za-z0-9_-]"), "_").take(64) + ".json")
+            f.writeText(json)
+            saved = f
+        } catch (e: Throwable) {
+            AppLog.log("ENGINE", "saving the analysis failed (the download will extract again)", e)
+        }
+        return Analysis(info, saved)
+    }
+
+    /** The saved analysis of this video, if it is still fresh (the stream links inside it expire after some hours). */
+    private fun savedInfoFile(url: String): File? {
+        synchronized(cache) {
+            val c = cache[videoKey(url)] ?: return null
+            if (System.currentTimeMillis() - c.time >= CACHE_MS) return null
+            val f = c.file ?: return null
+            return if (f.isFile && f.length() > 0L) f else null
+        }
+    }
+
+    private fun forgetSavedInfo(url: String) {
+        synchronized(cache) {
+            val key = videoKey(url)
+            val c = cache[key] ?: return
+            try {
+                c.file?.delete()
+            } catch (e: Throwable) {
+                // ignore
+            }
+            cache[key] = Cached(c.time, c.info, null)
+        }
     }
 
     private fun parseInfo(obj: JSONObject): Info {
@@ -325,6 +384,7 @@ object DownloadEngine {
         context: Context, url: String, option: Option,
         onProgress: (Float, Long, String) -> Unit, log: (String) -> Unit
     ): Result {
+        cancelRequested = false
         return try {
             withAutoUpdate(context, log) { downloadOnce(context, url, option, onProgress, log) }
         } catch (e: Throwable) {
@@ -339,8 +399,10 @@ object DownloadEngine {
             m.contains("muxer") || m.contains("encoder")
     }
 
-    private fun buildRequest(url: String, dir: File, option: Option, toOpus: Boolean): YoutubeDLRequest {
-        val request = YoutubeDLRequest(url)
+    private fun buildRequest(url: String, dir: File, option: Option, toOpus: Boolean, infoJson: File?): YoutubeDLRequest {
+        // With a saved analysis yt-dlp gets NO url (it would extract the video again) and reads the info file instead.
+        val request = if (infoJson != null) YoutubeDLRequest(emptyList<String>()) else YoutubeDLRequest(url)
+        if (infoJson != null) request.addOption("--load-info-json", infoJson.absolutePath)
         request.addOption("--no-mtime")
         request.addOption("--no-playlist")
         when {
@@ -374,19 +436,39 @@ object DownloadEngine {
         val app = context.applicationContext
         val dir = File(app.getExternalFilesDir(null) ?: app.filesDir, "downloads")
         dir.mkdirs()
+        removeStalePartials(dir)
         val before = (dir.listFiles() ?: emptyArray()).map { it.absolutePath }.toSet()
         val callback: (Float, Long, String) -> Unit = { progress, eta, line -> onProgress(progress, eta, line) }
 
-        val wantOpus = option.audioOnly && option.ext == "webm" && ffmpegReady
-        if (wantOpus) log("Audio: converting to .opus (copy, no re-encoding)")
-        try {
-            YoutubeDL.getInstance().execute(buildRequest(url, dir, option, wantOpus), PROCESS_ID, callback)
-        } catch (e: Throwable) {
-            if (!wantOpus || !conversionFailed(e.message ?: "")) throw e
-            // The conversion step failed: keep the original .webm instead (the stream is usually already downloaded).
-            AppLog.log("ENGINE", "opus conversion failed, keeping webm", e)
-            log("The .opus conversion failed, keeping the original .webm: " + (e.message ?: e.toString()).take(200))
-            YoutubeDL.getInstance().execute(buildRequest(url, dir, option, false), PROCESS_ID, callback)
+        var opus = option.audioOnly && option.ext == "webm" && ffmpegReady
+        if (opus) log("Audio: converting to .opus (copy, no re-encoding)")
+        var infoJson = savedInfoFile(url)
+        if (infoJson != null) log("Using the saved analysis (no second extraction)")
+        // At most 3 rounds: every fallback below changes the state it depends on, so the loop always ends.
+        while (true) {
+            try {
+                YoutubeDL.getInstance().execute(buildRequest(url, dir, option, opus, infoJson), PROCESS_ID, callback)
+                break
+            } catch (e: Throwable) {
+                val message = e.message ?: e.toString()
+                if (cancelRequested) throw e
+                if (opus && conversionFailed(message)) {
+                    // The conversion step failed: keep the original .webm instead (the stream is usually already downloaded).
+                    AppLog.log("ENGINE", "opus conversion failed, keeping webm", e)
+                    log("The .opus conversion failed, keeping the original .webm: " + message.take(200))
+                    opus = false
+                    continue
+                }
+                if (infoJson != null && fixableByUpdate(message)) {
+                    // Most likely the saved stream links expired: forget the analysis and extract the video again.
+                    AppLog.log("ENGINE", "download from the saved analysis failed, extracting again", e)
+                    log("The saved analysis could not be used, starting again the normal way...")
+                    forgetSavedInfo(url)
+                    infoJson = null
+                    continue
+                }
+                throw e
+            }
         }
 
         val newest = (dir.listFiles() ?: emptyArray())
@@ -396,6 +478,23 @@ object DownloadEngine {
             Result(true, "Downloaded: " + newest.name, newest)
         } else {
             Result(false, "yt-dlp finished but no new file was found in " + dir.absolutePath)
+        }
+    }
+
+    /** Half-downloaded files of failed or cancelled runs older than a day are removed (younger ones may be resumed). */
+    private fun removeStalePartials(dir: File) {
+        try {
+            val limit = System.currentTimeMillis() - 24L * 60L * 60L * 1000L
+            dir.listFiles()?.forEach {
+                val n = it.name
+                if (it.isFile && it.lastModified() < limit &&
+                    (n.endsWith(".part") || n.endsWith(".ytdl") || n.contains(".part-"))
+                ) {
+                    it.delete()
+                }
+            }
+        } catch (e: Throwable) {
+            AppLog.log("ENGINE", "cleaning old partial files failed", e)
         }
     }
 
