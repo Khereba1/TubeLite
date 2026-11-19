@@ -170,7 +170,7 @@
     ['playing', 'loadedmetadata'].forEach(function (t) {
       document.addEventListener(t, function () { applyShorts(false); }, true);
     });
-    setInterval(function () { applyShorts(false); }, 2000);
+    setInterval(function () { applyShorts(false); }, 400); // cheap: returns at once when not on a Short or already applied
     return;
   }
 
@@ -195,8 +195,35 @@
         if (p.setPlaybackQuality) p.setPlaybackQuality(q);
       }
       qualAppliedId = id;
-      if (!explicit) setTimeout(function () { applyQuality(true); }, 2000); // YouTube sometimes resets it
+      if (!explicit) {
+        var cur = '?';
+        try { if (p.getPlaybackQuality) cur = p.getPlaybackQuality(); } catch (e2) {}
+        dbg('quality ' + q + ' set ' + Math.round(performance.now()) + 'ms after page start (player was at ' + cur + ')');
+        setTimeout(function () { applyQuality(true); }, 2000); // YouTube sometimes resets it
+      }
     } catch (e) {}
+  }
+
+  /* ---- player: apply the quality EARLY ----
+     YouTube starts every video at its own quality (about 360p) and the player API only exists a moment after the page
+     starts. Waiting for the first media event or the 3 s timer meant the first seconds played at the wrong quality.
+     So after page start and after every new video, the player is polled every 150 ms (for at most 20 s) and the quality
+     is set the moment the API is there. The poll stops by itself once the quality is applied. */
+  var qFastTimer = 0, qFastUntil = 0;
+  function kickQuality() {
+    qFastUntil = Date.now() + 20000;
+    if (qFastTimer) return;
+    qFastTimer = setInterval(function () {
+      try {
+        var id = curId();
+        if (Date.now() > qFastUntil || (id !== '' && id === qualAppliedId)) {
+          clearInterval(qFastTimer);
+          qFastTimer = 0;
+          return;
+        }
+        applyQuality(false);
+      } catch (e) {}
+    }, 150);
   }
 
   /* ---- player: default playback speed (window.__tubeSpeed, e.g. "1.5"), once per video so a manual change sticks ---- */
@@ -226,7 +253,9 @@
     speedAppliedId = '';
     applyQuality(true);
     applySpeed(true);
+    kickQuality();
   };
+  kickQuality(); // this page just started
 
   /* ---- player: start every video with sound (YouTube starts muted when the page has no user gesture) ---- */
   var unmutedId = '';
@@ -414,12 +443,21 @@
   }
   document.addEventListener('DOMContentLoaded', reportDir);
 
+  var qPlayingId = '';
   // Media events instead of constant polling: light on CPU and battery.
   ['play', 'playing', 'pause', 'ended', 'emptied', 'loadstart', 'loadedmetadata', 'durationchange', 'seeked', 'ratechange']
     .forEach(function (t) {
-      document.addEventListener(t, function () { report(true); skipAd(); applyQuality(false); applySpeed(false); ensureUnmuted(); reportDir(); }, true);
+      document.addEventListener(t, function (ev) {
+        if (ev && (ev.type === 'loadstart' || ev.type === 'emptied')) kickQuality(); // a new video is starting
+        if (ev && ev.type === 'playing' && qPlayingId !== curId()) { qPlayingId = curId(); applyQuality(true); } // once more when it really starts
+        report(true); skipAd(); applyQuality(false); applySpeed(false); ensureUnmuted(); reportDir();
+      }, true);
     });
-  setInterval(function () { report(false); applyQuality(false); applySpeed(false); ensureUnmuted(); reportDir(); }, 3000); // safety net: title changes, missed events
+  setInterval(function () {
+    var cid = curId();
+    if (cid !== '' && cid !== qualAppliedId) kickQuality();
+    report(false); applyQuality(false); applySpeed(false); ensureUnmuted(); reportDir();
+  }, 3000); // safety net: title changes, missed events
   setInterval(skipAd, 1000);        // safety net: ads that appear without a media event
 
   /* ---- player: commands from the app ---- */

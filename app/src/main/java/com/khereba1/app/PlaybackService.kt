@@ -5,14 +5,19 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.drawable.Icon
+import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.IBinder
+import androidx.core.content.ContextCompat
 
 /**
  * Foreground service that keeps the process alive while audio plays in the background,
@@ -46,6 +51,7 @@ class PlaybackService : Service() {
     }
 
     private var session: MediaSession? = null
+    private var noisyReceiver: BroadcastReceiver? = null
     private var playing = true
     private var title = ""
     private var positionMs = 0L
@@ -82,6 +88,27 @@ class PlaybackService : Service() {
             session = s
         } catch (e: Throwable) {
             AppLog.log("SERVICE", "MediaSession failed", e)
+        }
+        registerNoisyReceiver()
+    }
+
+    /** Headphones unplugged / Bluetooth audio lost: pause, like every normal player (so sound never jumps to the speaker). */
+    private fun registerNoisyReceiver() {
+        try {
+            val r = object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY && playing) {
+                        AppLog.log("SERVICE", "Audio output lost (headphones/Bluetooth): pausing")
+                        controller?.invoke("pause")
+                    }
+                }
+            }
+            ContextCompat.registerReceiver(
+                this, r, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+            noisyReceiver = r
+        } catch (e: Throwable) {
+            AppLog.log("SERVICE", "noisy receiver failed", e)
         }
     }
 
@@ -207,6 +234,12 @@ class PlaybackService : Service() {
 
     override fun onDestroy() {
         instance = null
+        try {
+            noisyReceiver?.let { unregisterReceiver(it) }
+        } catch (e: Throwable) {
+            // ignore
+        }
+        noisyReceiver = null
         try {
             session?.release()
         } catch (e: Throwable) {

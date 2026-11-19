@@ -95,6 +95,11 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code
   deny-list it falls back once to the normal url download. `YoutubeDLRequest(emptyList<String>())` is used for the url-less request (unverified against the library source).
   A cancel (`DownloadEngine.cancelRequested`) never triggers the auto update or a retry. Partial files (.part/.ytdl) older than 24 h are removed at the start of a download.
   Multi-threading does not speed up the analysis (yt-dlp is single-threaded Python); `-N` (concurrent fragments) only helps fragmented formats, aria2c is the idea for the download itself.
+- EARLY QUALITY (1.27): YouTube starts at its own ~360p and the player API appears a moment after page start, so the first seconds used the wrong quality. inject.js `kickQuality()`
+  polls the player every 150 ms (max 20 s, stops once applied) after page start, after `loadstart`/`emptied` and when the 3 s timer sees an unapplied id; it also re-applies once at the
+  first `playing`. The log line "quality X set N ms after page start (player was at Y)" shows the timing. Shorts poll every 400 ms (cheap early return). If it is still late, the next idea
+  is to write YouTube's own localStorage key `yt-player-quality` (we currently block writes to it; both WebViews share it, which caused the Shorts leak) before the player starts.
+- HEADPHONES (1.27): `PlaybackService` registers `ACTION_AUDIO_BECOMING_NOISY` (not exported receiver) and sends "pause" while playing (headphones unplugged, Bluetooth lost).
 - KNOWN, NOT FIXED: the two player buttons are positioned with fixed dp (pill: 7dp from top, settings: 48dp at the top right/left) assuming YouTube's 48dp top bar. On other phones/YouTube
   layouts the page can differ (video starts at the top, no bar). Planned fix: inject.js measures the real "more" button / bar and reports the rect over the bridge, Kotlin places the buttons from it.
   Unused: Compose plugin and dependencies are still in build.gradle.kts (no Compose code exists); removing them also needs `androidx.activity:activity` for ComponentActivity.
