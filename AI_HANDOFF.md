@@ -113,7 +113,7 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code
     /watch?v=ID in `openInBrowse`, `resolveStartUrl` (links from other apps), `shouldOverrideUrlLoading` and `doUpdateVisitedHistory` (browse role); the bare /shorts feed goes to the home page.
   * UNCONFIRMED: whether m.youtube.com keeps /watch?v=<short id> as a normal watch page. If it redirects back to /shorts/ID inside the player page, the player branch of
     `doUpdateVisitedHistory` deliberately ignores shorts URLs (no loop) and the Short plays in its own vertical UI in the player page.
-  * 1.30 settings: "Hide Shorts" (pref `hide_shorts`, default ON) and, only while hiding, "Open Shorts links as normal videos" (pref `shorts_as_video`, default OFF, because playing a
+  * 1.30 settings: "Hide Shorts" (pref `hide_shorts`, default ON) and, only while hiding, "Play Shorts as videos" (pref `shorts_as_video`, default OFF, because playing a
     Short as /watch may not suit everyone). The "Default Shorts quality" row is only shown while Shorts are NOT hidden. Kotlin: `shortsTarget(url)` decides (null = leave alone, /watch url,
     or HOME_URL for the bare feed). inject.js: `window.__tubeHideShorts` / `__tubeShortsAsVideo` ('1'/'0', from `prefsScript()`), the hide rules live in their own `<style id=__tube_shorts_css>`,
     `window.__tubeApplyShortsPrefs()` is called after a settings change and in `onPageFinished` (the document-start copy of the settings may run after inject.js).
