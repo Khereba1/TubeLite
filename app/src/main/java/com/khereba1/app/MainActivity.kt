@@ -52,6 +52,7 @@ import androidx.webkit.ScriptHandler
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -119,6 +120,8 @@ class MainActivity : ComponentActivity() {
     private var quality = "auto"        // default video quality
     private var shortsQuality = "auto"  // default Shorts (reels) quality
     private var speed = "1.0"           // default video playback speed
+    private var hideShorts = true       // YouTube is shown without Shorts
+    private var shortsAsVideo = false   // (only with hideShorts) Shorts links open as normal videos
     private val qualityValues = arrayOf("auto", "tiny", "small", "medium", "large", "hd720", "hd1080")
     private val speedValues = arrayOf("0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0")
 
@@ -160,6 +163,8 @@ class MainActivity : ComponentActivity() {
         if (quality !in qualityValues) quality = "auto"
         if (shortsQuality !in qualityValues) shortsQuality = "auto"
         if (speed !in speedValues) speed = "1.0"
+        hideShorts = prefs.getBoolean("hide_shorts", true)
+        shortsAsVideo = prefs.getBoolean("shorts_as_video", false)
         bridgeSupported = try {
             WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
         } catch (e: Throwable) {
@@ -490,15 +495,26 @@ class MainActivity : ComponentActivity() {
         expandPlayer()
     }
 
+    /**
+     * What to do with a Shorts url. Null = leave it alone (Shorts shown, or hidden but not converted). Otherwise the url to open instead:
+     * /watch?v=ID (only with "open as normal videos") or the home page (the Shorts feed itself does not exist while Shorts are hidden).
+     */
+    private fun shortsTarget(url: String?): String? {
+        if (!hideShorts || !isShortsUrl(url)) return null
+        val w = shortsToWatch(url)
+        if (w != null) return if (shortsAsVideo) w else null
+        return HOME_URL
+    }
+
     private fun openInBrowse(url: String, minimize: Boolean) {
         val u = Uri.parse(url)
         if (u.scheme != "https" || !isYoutubeHost(u.host)) return
-        if (isShortsUrl(url)) {
-            val w = shortsToWatch(url)
-            if (w != null) {
-                openVideo(w)
+        val st = shortsTarget(url)
+        if (st != null) {
+            if (isWatchUrl(st)) {
+                openVideo(st)
             } else {
-                browseView.loadUrl(HOME_URL) // the Shorts feed does not exist here
+                browseView.loadUrl(HOME_URL)
                 if (minimize) minimizePlayer()
             }
             return
@@ -604,7 +620,9 @@ class MainActivity : ComponentActivity() {
     /** JS that hands the saved settings to a page. Values can only be entries of the fixed lists. */
     private fun prefsScript(): String =
         "window.__tubeQuality='" + quality + "';window.__tubeShortsQuality='" + shortsQuality +
-            "';window.__tubeSpeed='" + speed + "';"
+            "';window.__tubeSpeed='" + speed + "';window.__tubeHideShorts='" + (if (hideShorts) "1" else "0") +
+            "';window.__tubeShortsAsVideo='" + (if (shortsAsVideo) "1" else "0") +
+            "';window.__tubeSettingsLabel=" + JSONObject.quote(getString(R.string.settings_title)) + ";"
 
     /** Save, then tell both pages to apply the new settings to what is playing now. */
     private fun savePrefsAndApply() {
@@ -612,10 +630,13 @@ class MainActivity : ComponentActivity() {
             .putString("quality", quality)
             .putString("shorts_quality", shortsQuality)
             .putString("speed", speed)
+            .putBoolean("hide_shorts", hideShorts)
+            .putBoolean("shorts_as_video", shortsAsVideo)
             .apply()
         playerView?.let { registerPrefsScript(it) }
         registerPrefsScript(browseView)
-        val js = prefsScript() + "window.__tubeApplyPrefs&&window.__tubeApplyPrefs()"
+        val js = prefsScript() + "window.__tubeApplyShortsPrefs&&window.__tubeApplyShortsPrefs();" +
+            "window.__tubeApplyPrefs&&window.__tubeApplyPrefs()"
         playerView?.evaluateJavascript(js, null)
         browseView.evaluateJavascript(js, null)
     }
@@ -635,27 +656,44 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
+    private fun onOff(v: Boolean): String = getString(if (v) R.string.settings_on else R.string.settings_off)
+
     private fun showSettingsDialog() {
-        val rows = arrayOf(
-            getString(R.string.settings_video_quality) + ": " + qualityLabel(quality),
-            getString(R.string.settings_speed) + ": " + speedLabel(speed),
-            getString(R.string.settings_download_test),
-            getString(R.string.shortcut_log)
-        )
+        val labels = ArrayList<String>()
+        val actions = ArrayList<() -> Unit>()
         val qualityLabels = Array(qualityValues.size) { i -> qualityLabel(qualityValues[i]) }
         val speedLabels = Array(speedValues.size) { i -> speedLabel(speedValues[i]) }
+        fun add(label: String, action: () -> Unit) {
+            labels.add(label)
+            actions.add(action)
+        }
+        fun toggle(change: () -> Unit) {
+            change()
+            savePrefsAndApply()
+            showSettingsDialog() // back to the list, now showing the new value
+        }
+        add(getString(R.string.settings_video_quality) + ": " + qualityLabel(quality)) {
+            pickOption(R.string.settings_video_quality, qualityLabels, qualityValues, quality) { quality = it }
+        }
+        if (!hideShorts) {
+            add(getString(R.string.settings_shorts_quality) + ": " + qualityLabel(shortsQuality)) {
+                pickOption(R.string.settings_shorts_quality, qualityLabels, qualityValues, shortsQuality) { shortsQuality = it }
+            }
+        }
+        add(getString(R.string.settings_speed) + ": " + speedLabel(speed)) {
+            pickOption(R.string.settings_speed, speedLabels, speedValues, speed) { speed = it }
+        }
+        add(getString(R.string.settings_hide_shorts) + ": " + onOff(hideShorts)) { toggle { hideShorts = !hideShorts } }
+        if (hideShorts) {
+            add(getString(R.string.settings_shorts_as_video) + ": " + onOff(shortsAsVideo)) { toggle { shortsAsVideo = !shortsAsVideo } }
+        }
+        add(getString(R.string.settings_download_test)) {
+            startActivity(Intent(this, DownloadTestActivity::class.java).putExtra("url", playerView?.url ?: ""))
+        }
+        add(getString(R.string.shortcut_log)) { startActivity(Intent(this, LogActivity::class.java)) }
         AlertDialog.Builder(this)
             .setTitle(R.string.settings_title)
-            .setItems(rows) { _, which ->
-                when (which) {
-                    0 -> pickOption(R.string.settings_video_quality, qualityLabels, qualityValues, quality) { quality = it }
-                    1 -> pickOption(R.string.settings_speed, speedLabels, speedValues, speed) { speed = it }
-                    2 -> startActivity(
-                        Intent(this, DownloadTestActivity::class.java).putExtra("url", playerView?.url ?: "")
-                    )
-                    else -> startActivity(Intent(this, LogActivity::class.java))
-                }
-            }
+            .setItems(labels.toTypedArray()) { _, which -> actions[which]() }
             .show()
     }
 
@@ -682,6 +720,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleMessage(role: String, msg: String) {
         when {
+            msg == "ui|settings" -> if (role == "browse") showSettingsDialog()
             msg.startsWith("open|") -> if (role == "browse") openVideo(msg.substring(5))
             msg.startsWith("browse|") -> if (role == "player") openInBrowse(msg.substring(7), true)
             msg.startsWith("dbg|") -> AppLog.log("PAGE", msg.substring(4).take(200)) // log only (either page)
@@ -780,7 +819,8 @@ class MainActivity : ComponentActivity() {
             return "https://m.youtube.com/watch?v=" + Uri.encode(id)
         }
         if (host == "youtube.com" || host.endsWith(".youtube.com")) {
-            if (isShortsUrl(uri.toString())) return shortsToWatch(uri.toString()) ?: HOME_URL
+            val st = shortsTarget(uri.toString())
+            if (st != null) return st
             return uri.buildUpon().authority("m.youtube.com").build().toString()
         }
         return HOME_URL
@@ -896,9 +936,9 @@ class MainActivity : ComponentActivity() {
             val uri = request.url
             val scheme = uri.scheme?.lowercase(Locale.ROOT)
             if (scheme == "https" && isAllowedHost(uri.host)) {
-                if (role == "browse" && isShortsUrl(uri.toString())) {
-                    val w = shortsToWatch(uri.toString())
-                    if (w != null) openVideo(w) else view.post { view.loadUrl(HOME_URL) }
+                val st = if (role == "browse") shortsTarget(uri.toString()) else null
+                if (st != null) {
+                    if (isWatchUrl(st)) openVideo(st) else view.post { view.loadUrl(HOME_URL) }
                     return true
                 }
                 if (role == "browse" && bridgeSupported && isWatchUrl(uri.toString())) {
@@ -918,11 +958,11 @@ class MainActivity : ComponentActivity() {
                 // The page navigated to a video by itself (link routing missed it): move it to the player page.
                 openVideo(url)
                 view.post { if (view.canGoBack()) view.goBack() }
-            } else if (role == "browse" && isShortsUrl(url)) {
-                // The page moved to a Short by itself: play it as a normal video, or go home for the Shorts feed.
-                val w = shortsToWatch(url)
-                if (w != null) openVideo(w)
-                view.post { if (view.canGoBack()) view.goBack() else if (w == null) view.loadUrl(HOME_URL) }
+            } else if (role == "browse" && shortsTarget(url) != null) {
+                // The page moved to a Short by itself: play it as a normal video (if so set), or go home for the Shorts feed.
+                val st = shortsTarget(url)
+                if (st != null && isWatchUrl(st)) openVideo(st)
+                view.post { if (view.canGoBack()) view.goBack() else if (st != null && !isWatchUrl(st)) view.loadUrl(HOME_URL) }
             } else if (role == "player" && url.startsWith("https://m.youtube.com") && !isWatchUrl(url) && !isShortsUrl(url)) {
                 // The player page left the watch page (video would stop anyway): show it in the browse page instead.
                 handler.post {
@@ -941,7 +981,8 @@ class MainActivity : ComponentActivity() {
 
         override fun onPageFinished(view: WebView, url: String?) {
             super.onPageFinished(view, url)
-            view.evaluateJavascript(prefsScript(), null)
+            // also re-applies the Shorts setting: the document-start copy of the settings may have arrived after inject.js ran
+            view.evaluateJavascript(prefsScript() + "window.__tubeApplyShortsPrefs&&window.__tubeApplyShortsPrefs()", null)
         }
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {

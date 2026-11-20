@@ -16,7 +16,7 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code
 2. NEVER strip or rewrite Content-Security-Policy, and NEVER proxy page requests through app code.
 3. NEVER use `addJavascriptInterface`. The only app<->page channel is `WebViewCompat.addWebMessageListener("TubeBridge")`,
    restricted to https://m.youtube.com and https://www.youtube.com. It accepts ONLY short text messages: the player state
-   "<1|0>|<videoId>|<posMs>|<durMs>|<title>", "open|<watch url>" (browse page), "browse|<youtube url>" (player page), "dbg|<text>" (player page, log only, truncated) and "dir|ltr|<how>" / "dir|rtl|<how>" (player page; <how> = layout/lang/dir/css/default, logged as "DIR" in the in-app log).
+   "<1|0>|<videoId>|<posMs>|<durMs>|<title>", "open|<watch url>" (browse page), "ui|settings" (browse page, opens the settings dialog), "browse|<youtube url>" (player page), "dbg|<text>" (player page, log only, truncated) and "dir|ltr|<how>" / "dir|rtl|<how>" (player page; <how> = layout/lang/dir/css/default, logged as "DIR" in the in-app log).
    Every URL is re-validated in Kotlin (https + youtube host) before use, and commands to the page go through COMMAND_REGEX.
 4. NEVER expose cookies, tokens or any account data to JS or to any file/log. No `getCookie` helper.
 5. Main-frame navigation is limited to youtube.com / google.com subdomains over https (`isAllowedHost` in MainActivity.kt); everything else goes to the external browser or is blocked.
@@ -105,7 +105,7 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code
   (3 s timer, player page) logs "gap? video.top=... bar.bottom=... vvOffsetTop=..." at most once a minute and fires a resize event. If the log shows a real gap in the DOM numbers the page is wrong;
   if the numbers are normal only the video layer is displaced. The selectors `ytm-mobile-topbar-renderer, header` are a guess.
 - A friend's phone (realme RMX5377, Android 16, English) once showed the buttons over the video; it healed by itself on the old version (probably a temporary YouTube layout). Not investigated further.
-- NO SHORTS (1.29, permanent, no setting): YouTube is shown as if it had no Shorts.
+- NO SHORTS (1.29; a SETTING since 1.30): YouTube is shown as if it had no Shorts.
   * inject.js (both pages): CSS rules (one per selector, `:has()` ones included) hide Shorts shelves/cards and `a[href$="/shorts"]`; `hideShorts()` (debounced MutationObserver) marks cards of
     known types (`CARD_SEL`) and tabs/chips (`TAB_SEL`: bottom bar item, chips, channel tabs) that link to /shorts or are literally named "Shorts" with `data-tube-hide`. A Shorts link that is
     NOT inside a known card is logged once ("shorts link outside the known cards: tag<tag<...") so the new tag name can be added. The scan is skipped on /shorts pages.
@@ -113,7 +113,14 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code
     /watch?v=ID in `openInBrowse`, `resolveStartUrl` (links from other apps), `shouldOverrideUrlLoading` and `doUpdateVisitedHistory` (browse role); the bare /shorts feed goes to the home page.
   * UNCONFIRMED: whether m.youtube.com keeps /watch?v=<short id> as a normal watch page. If it redirects back to /shorts/ID inside the player page, the player branch of
     `doUpdateVisitedHistory` deliberately ignores shorts URLs (no loop) and the Short plays in its own vertical UI in the player page.
-  * The settings dialog no longer has the "Default Shorts quality" row (the pref variables and `applyShorts` stay, harmless, for that fallback).
+  * 1.30 settings: "Hide Shorts" (pref `hide_shorts`, default ON) and, only while hiding, "Open Shorts links as normal videos" (pref `shorts_as_video`, default OFF, because playing a
+    Short as /watch may not suit everyone). The "Default Shorts quality" row is only shown while Shorts are NOT hidden. Kotlin: `shortsTarget(url)` decides (null = leave alone, /watch url,
+    or HOME_URL for the bare feed). inject.js: `window.__tubeHideShorts` / `__tubeShortsAsVideo` ('1'/'0', from `prefsScript()`), the hide rules live in their own `<style id=__tube_shorts_css>`,
+    `window.__tubeApplyShortsPrefs()` is called after a settings change and in `onPageFinished` (the document-start copy of the settings may run after inject.js).
+- SETTINGS BUTTON ON THE BROWSE PAGE (1.30): inject.js `ensureSettingsButton()` (browse role only, debounced MutationObserver) inserts a <button id=__tube_settings_btn> into YouTube's top bar
+  (`ytm-mobile-topbar-renderer`) before the search icon (found by aria-label/href: "search", Arabic "بحث", "/results"; climbs to the child of the icon row). If the bar/icon is not found
+  after 3.5 s a floating round button (bottom right, above the bottom bar, `data-floating=1`) is used and replaced when the bar appears. Click -> fixed bridge message "ui|settings" -> `showSettingsDialog()`.
+  The label comes from `window.__tubeSettingsLabel`. The selectors are guesses: unconfirmed on a real device. The player page keeps its native button over the site's "more" button.
 - KNOWN, NOT FIXED: the two player buttons are positioned with fixed dp (pill: 7dp from top, settings: 48dp at the top right/left) assuming YouTube's 48dp top bar. On other phones/YouTube
   layouts the page can differ (video starts at the top, no bar). Planned fix: inject.js measures the real "more" button / bar and reports the rect over the bridge, Kotlin places the buttons from it.
   Unused: Compose plugin and dependencies are still in build.gradle.kts (no Compose code exists); removing them also needs `androidx.activity:activity` for ComponentActivity.

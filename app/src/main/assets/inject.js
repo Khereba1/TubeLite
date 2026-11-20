@@ -95,13 +95,41 @@
     'ytm-compact-video-renderer:has(a[href^="/shorts/"])', 'ytm-media-item:has(a[href^="/shorts/"])',
     'a[href$="/shorts"]', '[data-tube-hide]'
   ].map(function (sel) { return sel + '{display:none !important;}'; }).join('');
+  function shortsHidden() { return window.__tubeHideShorts !== '0'; }
+  function shortsAsVideo() { return shortsHidden() && window.__tubeShortsAsVideo === '1'; }
+  // The Shorts rules live in their own stylesheet, switched on/off by the app's setting (window.__tubeHideShorts).
+  function applyShortsCss() {
+    try {
+      var st = document.getElementById('__tube_shorts_css');
+      if (!st) {
+        st = document.createElement('style');
+        st.id = '__tube_shorts_css';
+        (document.head || document.documentElement).appendChild(st);
+      }
+      st.textContent = shortsHidden() ? SHORTS_HIDE : '';
+    } catch (e) {}
+  }
+  // The app calls this after a settings change and after every page load (the settings may arrive after this script ran).
+  window.__tubeApplyShortsPrefs = function () {
+    applyShortsCss();
+    if (shortsHidden()) {
+      hideShorts();
+    } else {
+      try {
+        var marked = document.querySelectorAll('[data-tube-hide]');
+        for (var i = 0; i < marked.length; i++) marked[i].removeAttribute('data-tube-hide');
+      } catch (e) {}
+    }
+  };
+  document.addEventListener('DOMContentLoaded', applyShortsCss);
+
   var CSS = [
     'ytm-promoted-sparkles-web-renderer', 'ytm-promoted-video-renderer', 'ytm-companion-slot',
     'ad-slot-renderer', 'ytm-statement-banner-renderer', 'ytm-brand-video-singleton-renderer',
     'ytm-in-feed-ad-layout-renderer', '#player-ads', '.video-ads', '.ytp-ad-overlay-container',
     '.ytp-ad-image-overlay'
   ].join(',') + '{display:none !important;}' +
-    '*{-webkit-tap-highlight-color:transparent;}html{touch-action:manipulation;}' + SHORTS_HIDE;
+    '*{-webkit-tap-highlight-color:transparent;}html{touch-action:manipulation;}';
   function addStyle() {
     try {
       if (document.getElementById('__tube_css')) return;
@@ -126,7 +154,7 @@
       var u = new URL(a.href, location.href);
       if (u.hostname !== 'm.youtube.com' && u.hostname !== 'www.youtube.com' && u.hostname !== 'youtube.com') return;
       var isWatch = u.pathname === '/watch';
-      if (u.pathname === '/shorts' || u.pathname.indexOf('/shorts/') === 0) {
+      if (shortsAsVideo() && (u.pathname === '/shorts' || u.pathname.indexOf('/shorts/') === 0)) {
         // A Short opens as a normal video (browse page) or goes through the app (player page); the app turns it into /watch?v=ID.
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -152,6 +180,7 @@
   var shortsLogged = false;
   function hideShorts() {
     try {
+      if (!shortsHidden()) return;
       if (location.pathname.indexOf('/shorts') === 0) return; // a Short opened in the player page as a fallback: leave it alone
       var links = document.querySelectorAll('a[href^="/shorts/"],a[href*="youtube.com/shorts/"]');
       for (var i = 0; i < links.length; i++) {
@@ -181,12 +210,91 @@
   var shortsTimer = 0;
   function scheduleHideShorts() {
     if (shortsTimer) return;
-    shortsTimer = setTimeout(function () { shortsTimer = 0; hideShorts(); }, 250);
+    shortsTimer = setTimeout(function () { shortsTimer = 0; hideShorts(); ensureSettingsButton(); }, 250);
   }
   try {
     new MutationObserver(scheduleHideShorts).observe(document, { childList: true, subtree: true });
   } catch (e) {}
-  document.addEventListener('DOMContentLoaded', hideShorts);
+  document.addEventListener('DOMContentLoaded', function () { hideShorts(); ensureSettingsButton(); });
+
+  /* ---- browse page: the app's own settings button inside YouTube's top bar, next to the search icon ----
+     It is a normal element of the bar, so it follows the bar's layout (also mirrored/Arabic) and never overlaps anything.
+     If the bar cannot be found (YouTube changed it, or a page without it) a small round button floats above the bottom bar instead.
+     The click only sends the fixed message "ui|settings"; the app opens its settings dialog. */
+  var SBTN = '__tube_settings_btn';
+  function settingsIcon() {
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '24');
+    svg.setAttribute('height', '24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    [[8, 9], [16, 15]].forEach(function (r) {
+      var line = document.createElementNS(ns, 'line');
+      line.setAttribute('x1', '4'); line.setAttribute('x2', '20');
+      line.setAttribute('y1', String(r[0])); line.setAttribute('y2', String(r[0]));
+      var dot = document.createElementNS(ns, 'circle');
+      dot.setAttribute('cx', String(r[1])); dot.setAttribute('cy', String(r[0])); dot.setAttribute('r', '2.4');
+      dot.setAttribute('fill', 'currentColor');
+      svg.appendChild(line);
+      svg.appendChild(dot);
+    });
+    return svg;
+  }
+  function findSearchSpot(bar) {
+    var els = bar.querySelectorAll('button,a,[role="button"]');
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (el.id === SBTN) continue;
+      var lab = (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('href') || '');
+      if (!/search|بحث|\/results/i.test(lab)) continue;
+      var r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) continue;
+      var n = el; // climb to the child of the icon row (the row has several children)
+      for (var d = 0; d < 3 && n.parentElement && n.parentElement !== bar; d++) {
+        if (n.parentElement.children.length >= 3) break;
+        n = n.parentElement;
+      }
+      if (n.parentElement) return n;
+    }
+    return null;
+  }
+  function ensureSettingsButton() {
+    try {
+      if (role !== 'browse' || !window.TubeBridge) return;
+      var cur = document.getElementById(SBTN);
+      var bar = document.querySelector('ytm-mobile-topbar-renderer');
+      var spot = bar ? findSearchSpot(bar) : null;
+      if (cur && cur.isConnected) {
+        if (!(spot && cur.getAttribute('data-floating') === '1')) return; // already fine
+        cur.remove(); // the bar is available now: replace the floating one
+      }
+      if (!spot && performance.now() < 3500) return; // the bar may simply not be drawn yet
+      var b = document.createElement('button');
+      b.id = SBTN;
+      b.type = 'button';
+      b.setAttribute('aria-label', window.__tubeSettingsLabel || 'Settings');
+      b.appendChild(settingsIcon());
+      b.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        try { window.TubeBridge.postMessage('ui|settings'); } catch (err) {}
+      }, true);
+      if (spot) {
+        b.style.cssText = 'flex:none;width:48px;height:48px;border:0;background:transparent;color:var(--yt-spec-text-primary,#fff);' +
+          'display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;';
+        spot.parentNode.insertBefore(b, spot);
+      } else {
+        b.setAttribute('data-floating', '1');
+        b.style.cssText = 'position:fixed;z-index:2147483000;bottom:84px;right:12px;width:44px;height:44px;border-radius:22px;border:0;' +
+          'background:rgba(33,33,33,.92);color:#fff;display:flex;align-items:center;justify-content:center;padding:0;';
+        (document.body || document.documentElement).appendChild(b);
+      }
+    } catch (e) {}
+  }
 
   /* ---- browse page: Shorts play here, so the default Shorts quality is applied here (speed is kept at 1x) ---- */
   if (role === 'browse') {

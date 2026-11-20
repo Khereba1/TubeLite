@@ -16,6 +16,10 @@
     <string name="settings_shorts_quality">جودة الريلز (Shorts) الافتراضية</string>
     <string name="settings_speed">سرعة التشغيل الافتراضية</string>
     <string name="settings_download_test">تحميل فيديو / صوت</string>
+    <string name="settings_hide_shorts">إخفاء الريلز (Shorts)</string>
+    <string name="settings_shorts_as_video">فتح روابط الريلز كفيديو عادي</string>
+    <string name="settings_on">مفعّل</string>
+    <string name="settings_off">متوقف</string>
     <string name="dl_title">تحميل</string>
     <string name="dl_engine_title">محرك التحميل</string>
     <string name="dl_link_hint">رابط فيديو يوتيوب</string>
