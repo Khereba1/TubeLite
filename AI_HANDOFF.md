@@ -105,6 +105,15 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code
   (3 s timer, player page) logs "gap? video.top=... bar.bottom=... vvOffsetTop=..." at most once a minute and fires a resize event. If the log shows a real gap in the DOM numbers the page is wrong;
   if the numbers are normal only the video layer is displaced. The selectors `ytm-mobile-topbar-renderer, header` are a guess.
 - A friend's phone (realme RMX5377, Android 16, English) once showed the buttons over the video; it healed by itself on the old version (probably a temporary YouTube layout). Not investigated further.
+- NO SHORTS (1.29, permanent, no setting): YouTube is shown as if it had no Shorts.
+  * inject.js (both pages): CSS rules (one per selector, `:has()` ones included) hide Shorts shelves/cards and `a[href$="/shorts"]`; `hideShorts()` (debounced MutationObserver) marks cards of
+    known types (`CARD_SEL`) and tabs/chips (`TAB_SEL`: bottom bar item, chips, channel tabs) that link to /shorts or are literally named "Shorts" with `data-tube-hide`. A Shorts link that is
+    NOT inside a known card is logged once ("shorts link outside the known cards: tag<tag<...") so the new tag name can be added. The scan is skipped on /shorts pages.
+  * A click on a Short link: browse page -> "open|https://m.youtube.com/watch?v=ID"; player page -> "browse|<url>" (Kotlin converts). Kotlin: `isShortsUrl` / `shortsToWatch` turn /shorts/ID into
+    /watch?v=ID in `openInBrowse`, `resolveStartUrl` (links from other apps), `shouldOverrideUrlLoading` and `doUpdateVisitedHistory` (browse role); the bare /shorts feed goes to the home page.
+  * UNCONFIRMED: whether m.youtube.com keeps /watch?v=<short id> as a normal watch page. If it redirects back to /shorts/ID inside the player page, the player branch of
+    `doUpdateVisitedHistory` deliberately ignores shorts URLs (no loop) and the Short plays in its own vertical UI in the player page.
+  * The settings dialog no longer has the "Default Shorts quality" row (the pref variables and `applyShorts` stay, harmless, for that fallback).
 - KNOWN, NOT FIXED: the two player buttons are positioned with fixed dp (pill: 7dp from top, settings: 48dp at the top right/left) assuming YouTube's 48dp top bar. On other phones/YouTube
   layouts the page can differ (video starts at the top, no bar). Planned fix: inject.js measures the real "more" button / bar and reports the rect over the bridge, Kotlin places the buttons from it.
   Unused: Compose plugin and dependencies are still in build.gradle.kts (no Compose code exists); removing them also needs `androidx.activity:activity` for ComponentActivity.

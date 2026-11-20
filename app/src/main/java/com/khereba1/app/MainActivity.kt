@@ -75,6 +75,22 @@ private fun isAllowedHost(host: String?): Boolean {
     return isYoutubeHost(h) || h == "google.com" || h.endsWith(".google.com")
 }
 
+private fun isShortsUrl(url: String?): Boolean {
+    if (url == null) return false
+    val u = Uri.parse(url)
+    val p = u.path ?: return false
+    return u.scheme == "https" && isYoutubeHost(u.host) && (p == "/shorts" || p.startsWith("/shorts/"))
+}
+
+/** YouTube is shown without Shorts: /shorts/ID opens as the normal video /watch?v=ID. Null for the /shorts feed itself and anything else. */
+private fun shortsToWatch(url: String?): String? {
+    val s = url ?: return null
+    if (!isShortsUrl(s)) return null
+    val seg = Uri.parse(s).pathSegments
+    if (seg.size < 2 || !VIDEO_ID_REGEX.matches(seg[1])) return null
+    return "https://m.youtube.com/watch?v=" + seg[1]
+}
+
 private fun isWatchUrl(url: String?): Boolean {
     if (url == null) return false
     val u = Uri.parse(url)
@@ -477,6 +493,16 @@ class MainActivity : ComponentActivity() {
     private fun openInBrowse(url: String, minimize: Boolean) {
         val u = Uri.parse(url)
         if (u.scheme != "https" || !isYoutubeHost(u.host)) return
+        if (isShortsUrl(url)) {
+            val w = shortsToWatch(url)
+            if (w != null) {
+                openVideo(w)
+            } else {
+                browseView.loadUrl(HOME_URL) // the Shorts feed does not exist here
+                if (minimize) minimizePlayer()
+            }
+            return
+        }
         browseView.loadUrl(u.buildUpon().authority("m.youtube.com").build().toString())
         if (minimize) minimizePlayer()
     }
@@ -612,7 +638,6 @@ class MainActivity : ComponentActivity() {
     private fun showSettingsDialog() {
         val rows = arrayOf(
             getString(R.string.settings_video_quality) + ": " + qualityLabel(quality),
-            getString(R.string.settings_shorts_quality) + ": " + qualityLabel(shortsQuality),
             getString(R.string.settings_speed) + ": " + speedLabel(speed),
             getString(R.string.settings_download_test),
             getString(R.string.shortcut_log)
@@ -624,9 +649,8 @@ class MainActivity : ComponentActivity() {
             .setItems(rows) { _, which ->
                 when (which) {
                     0 -> pickOption(R.string.settings_video_quality, qualityLabels, qualityValues, quality) { quality = it }
-                    1 -> pickOption(R.string.settings_shorts_quality, qualityLabels, qualityValues, shortsQuality) { shortsQuality = it }
-                    2 -> pickOption(R.string.settings_speed, speedLabels, speedValues, speed) { speed = it }
-                    3 -> startActivity(
+                    1 -> pickOption(R.string.settings_speed, speedLabels, speedValues, speed) { speed = it }
+                    2 -> startActivity(
                         Intent(this, DownloadTestActivity::class.java).putExtra("url", playerView?.url ?: "")
                     )
                     else -> startActivity(Intent(this, LogActivity::class.java))
@@ -756,6 +780,7 @@ class MainActivity : ComponentActivity() {
             return "https://m.youtube.com/watch?v=" + Uri.encode(id)
         }
         if (host == "youtube.com" || host.endsWith(".youtube.com")) {
+            if (isShortsUrl(uri.toString())) return shortsToWatch(uri.toString()) ?: HOME_URL
             return uri.buildUpon().authority("m.youtube.com").build().toString()
         }
         return HOME_URL
@@ -871,6 +896,11 @@ class MainActivity : ComponentActivity() {
             val uri = request.url
             val scheme = uri.scheme?.lowercase(Locale.ROOT)
             if (scheme == "https" && isAllowedHost(uri.host)) {
+                if (role == "browse" && isShortsUrl(uri.toString())) {
+                    val w = shortsToWatch(uri.toString())
+                    if (w != null) openVideo(w) else view.post { view.loadUrl(HOME_URL) }
+                    return true
+                }
                 if (role == "browse" && bridgeSupported && isWatchUrl(uri.toString())) {
                     openVideo(uri.toString())
                     return true
@@ -888,7 +918,12 @@ class MainActivity : ComponentActivity() {
                 // The page navigated to a video by itself (link routing missed it): move it to the player page.
                 openVideo(url)
                 view.post { if (view.canGoBack()) view.goBack() }
-            } else if (role == "player" && url.startsWith("https://m.youtube.com") && !isWatchUrl(url)) {
+            } else if (role == "browse" && isShortsUrl(url)) {
+                // The page moved to a Short by itself: play it as a normal video, or go home for the Shorts feed.
+                val w = shortsToWatch(url)
+                if (w != null) openVideo(w)
+                view.post { if (view.canGoBack()) view.goBack() else if (w == null) view.loadUrl(HOME_URL) }
+            } else if (role == "player" && url.startsWith("https://m.youtube.com") && !isWatchUrl(url) && !isShortsUrl(url)) {
                 // The player page left the watch page (video would stop anyway): show it in the browse page instead.
                 handler.post {
                     openInBrowse(url, false)

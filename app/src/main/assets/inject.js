@@ -86,13 +86,22 @@
   } catch (e) {}
 
   /* ---- hide ad UI, remove tap flash ---- */
+  /* ---- no Shorts anywhere: YouTube is shown as if it had none ----
+     Every selector is its own rule, so an engine that does not know ":has()" only loses that one rule. */
+  var SHORTS_HIDE = [
+    'ytm-reel-shelf-renderer', 'ytm-shorts-lockup-view-model', 'ytm-shorts-lockup-view-model-v2', 'ytm-reel-item-renderer',
+    'ytm-rich-section-renderer:has(ytm-reel-shelf-renderer)',
+    'ytm-rich-item-renderer:has(a[href^="/shorts/"])', 'ytm-video-with-context-renderer:has(a[href^="/shorts/"])',
+    'ytm-compact-video-renderer:has(a[href^="/shorts/"])', 'ytm-media-item:has(a[href^="/shorts/"])',
+    'a[href$="/shorts"]', '[data-tube-hide]'
+  ].map(function (sel) { return sel + '{display:none !important;}'; }).join('');
   var CSS = [
     'ytm-promoted-sparkles-web-renderer', 'ytm-promoted-video-renderer', 'ytm-companion-slot',
     'ad-slot-renderer', 'ytm-statement-banner-renderer', 'ytm-brand-video-singleton-renderer',
     'ytm-in-feed-ad-layout-renderer', '#player-ads', '.video-ads', '.ytp-ad-overlay-container',
     '.ytp-ad-image-overlay'
   ].join(',') + '{display:none !important;}' +
-    '*{-webkit-tap-highlight-color:transparent;}html{touch-action:manipulation;}';
+    '*{-webkit-tap-highlight-color:transparent;}html{touch-action:manipulation;}' + SHORTS_HIDE;
   function addStyle() {
     try {
       if (document.getElementById('__tube_css')) return;
@@ -117,7 +126,14 @@
       var u = new URL(a.href, location.href);
       if (u.hostname !== 'm.youtube.com' && u.hostname !== 'www.youtube.com' && u.hostname !== 'youtube.com') return;
       var isWatch = u.pathname === '/watch';
-      if (role === 'browse' && isWatch) {
+      if (u.pathname === '/shorts' || u.pathname.indexOf('/shorts/') === 0) {
+        // A Short opens as a normal video (browse page) or goes through the app (player page); the app turns it into /watch?v=ID.
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        var sm = /^\/shorts\/([A-Za-z0-9_-]{11})/.exec(u.pathname);
+        if (role === 'browse' && sm) window.TubeBridge.postMessage('open|https://m.youtube.com/watch?v=' + sm[1]);
+        else window.TubeBridge.postMessage('browse|' + u.href);
+      } else if (role === 'browse' && isWatch) {
         e.preventDefault();
         e.stopImmediatePropagation();
         window.TubeBridge.postMessage('open|' + u.href);
@@ -128,6 +144,49 @@
       }
     } catch (err) {}
   }, true);
+
+  /* ---- no Shorts: hide what CSS cannot reach (cards of known types, tabs and chips named "Shorts") ---- */
+  var CARD_SEL = 'ytm-rich-item-renderer,ytm-video-with-context-renderer,ytm-compact-video-renderer,ytm-media-item,' +
+    'ytm-reel-item-renderer,ytm-shorts-lockup-view-model,ytm-shorts-lockup-view-model-v2';
+  var TAB_SEL = 'ytm-pivot-bar-item-renderer,ytm-chip-cloud-chip-renderer,[role="tab"],yt-tab-shape';
+  var shortsLogged = false;
+  function hideShorts() {
+    try {
+      if (location.pathname.indexOf('/shorts') === 0) return; // a Short opened in the player page as a fallback: leave it alone
+      var links = document.querySelectorAll('a[href^="/shorts/"],a[href*="youtube.com/shorts/"]');
+      for (var i = 0; i < links.length; i++) {
+        var a = links[i];
+        if (a.closest('[data-tube-hide]')) continue;
+        var card = a.closest(CARD_SEL);
+        if (card) { card.setAttribute('data-tube-hide', '1'); continue; }
+        var tab = a.closest(TAB_SEL);
+        if (tab) { tab.setAttribute('data-tube-hide', '1'); continue; }
+        if (!shortsLogged && !a.closest('ytm-reel-shelf-renderer')) {
+          shortsLogged = true;
+          var chain = [], el = a;
+          for (var d = 0; el && d < 6; d++, el = el.parentElement) chain.push(el.tagName.toLowerCase());
+          dbg('shorts link outside the known cards: ' + chain.join('<'));
+        }
+      }
+      var tabs = document.querySelectorAll(TAB_SEL);
+      for (var j = 0; j < tabs.length; j++) {
+        var tb = tabs[j];
+        if (tb.hasAttribute('data-tube-hide')) continue;
+        if (/^\s*shorts\s*$/i.test(tb.textContent || '') || tb.querySelector('a[href^="/shorts"]')) {
+          tb.setAttribute('data-tube-hide', '1');
+        }
+      }
+    } catch (e) {}
+  }
+  var shortsTimer = 0;
+  function scheduleHideShorts() {
+    if (shortsTimer) return;
+    shortsTimer = setTimeout(function () { shortsTimer = 0; hideShorts(); }, 250);
+  }
+  try {
+    new MutationObserver(scheduleHideShorts).observe(document, { childList: true, subtree: true });
+  } catch (e) {}
+  document.addEventListener('DOMContentLoaded', hideShorts);
 
   /* ---- browse page: Shorts play here, so the default Shorts quality is applied here (speed is kept at 1x) ---- */
   if (role === 'browse') {
