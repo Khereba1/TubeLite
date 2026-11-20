@@ -120,7 +120,7 @@ class MainActivity : ComponentActivity() {
     private var quality = "auto"        // default video quality
     private var shortsQuality = "auto"  // default Shorts (reels) quality
     private var speed = "1.0"           // default video playback speed
-    private var hideShorts = true       // YouTube is shown without Shorts
+    private var hideShorts = false      // YouTube is shown without Shorts (off by default)
     private var shortsAsVideo = false   // (only with hideShorts) Shorts links open as normal videos
     private val qualityValues = arrayOf("auto", "tiny", "small", "medium", "large", "hd720", "hd1080")
     private val speedValues = arrayOf("0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0")
@@ -163,7 +163,7 @@ class MainActivity : ComponentActivity() {
         if (quality !in qualityValues) quality = "auto"
         if (shortsQuality !in qualityValues) shortsQuality = "auto"
         if (speed !in speedValues) speed = "1.0"
-        hideShorts = prefs.getBoolean("hide_shorts", true)
+        hideShorts = prefs.getBoolean("hide_shorts", false)
         shortsAsVideo = prefs.getBoolean("shorts_as_video", false)
         bridgeSupported = try {
             WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)

@@ -113,7 +113,7 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code
     /watch?v=ID in `openInBrowse`, `resolveStartUrl` (links from other apps), `shouldOverrideUrlLoading` and `doUpdateVisitedHistory` (browse role); the bare /shorts feed goes to the home page.
   * UNCONFIRMED: whether m.youtube.com keeps /watch?v=<short id> as a normal watch page. If it redirects back to /shorts/ID inside the player page, the player branch of
     `doUpdateVisitedHistory` deliberately ignores shorts URLs (no loop) and the Short plays in its own vertical UI in the player page.
-  * 1.30 settings: "Hide Shorts" (pref `hide_shorts`, default ON) and, only while hiding, "Play Shorts as videos" (pref `shorts_as_video`, default OFF, because playing a
+  * 1.30 settings: "Hide Shorts" (pref `hide_shorts`, default OFF since 1.32: Shorts are visible unless the user hides them) and, only while hiding, "Play Shorts as videos" (pref `shorts_as_video`, default OFF, because playing a
     Short as /watch may not suit everyone). The "Default Shorts quality" row is only shown while Shorts are NOT hidden. Kotlin: `shortsTarget(url)` decides (null = leave alone, /watch url,
     or HOME_URL for the bare feed). inject.js: `window.__tubeHideShorts` / `__tubeShortsAsVideo` ('1'/'0', from `prefsScript()`), the hide rules live in their own `<style id=__tube_shorts_css>`,
     `window.__tubeApplyShortsPrefs()` is called after a settings change and in `onPageFinished` (the document-start copy of the settings may run after inject.js).
@@ -123,7 +123,8 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code
   The label comes from `window.__tubeSettingsLabel`. The selectors are guesses: unconfirmed on a real device. The player page keeps its native button over the site's "more" button.
 - KNOWN, NOT FIXED: the two player buttons are positioned with fixed dp (pill: 7dp from top, settings: 48dp at the top right/left) assuming YouTube's 48dp top bar. On other phones/YouTube
   layouts the page can differ (video starts at the top, no bar). Planned fix: inject.js measures the real "more" button / bar and reports the rect over the bridge, Kotlin places the buttons from it.
-  Unused: Compose plugin and dependencies are still in build.gradle.kts (no Compose code exists); removing them also needs `androidx.activity:activity` for ComponentActivity.
+  Compose was removed in 1.32 (plugin, `buildFeatures.compose`, BOM and compose libraries; `androidx.activity:activity` replaces `activity-compose` for ComponentActivity). The UI is plain Views.
+  If a build error mentions a missing androidx class after this, add exactly that artifact instead of bringing Compose back.
 - Error log: launcher-icon long-press shortcut AND a neutral "Error log" button in the quality dialog (player page).
 - Zoom-to-fill (`setZoom` in inject.js): computes the picture size from `videoWidth/videoHeight`, then scales the video's PARENT container with a rule in our own
   stylesheet (`.__tube_zoom{transform:scale(s) !important}`), because YouTube rewrites the <video> element's inline style. If the container scale changes nothing it

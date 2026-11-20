@@ -95,7 +95,7 @@
     'ytm-compact-video-renderer:has(a[href^="/shorts/"])', 'ytm-media-item:has(a[href^="/shorts/"])',
     'a[href$="/shorts"]', '[data-tube-hide]'
   ].map(function (sel) { return sel + '{display:none !important;}'; }).join('');
-  function shortsHidden() { return window.__tubeHideShorts !== '0'; }
+  function shortsHidden() { return window.__tubeHideShorts === '1'; }
   function shortsAsVideo() { return shortsHidden() && window.__tubeShortsAsVideo === '1'; }
   // The Shorts rules live in their own stylesheet, switched on/off by the app's setting (window.__tubeHideShorts).
   function applyShortsCss() {
