@@ -85,4 +85,5 @@
     <string name="shorts_mode_show">ظاهرة</string>
     <string name="shorts_mode_hide">مخفية</string>
     <string name="shorts_mode_video">مخفية وتتفتح كفيديو</string>
+    <string name="back">رجوع</string>
 </resources>

@@ -86,4 +86,5 @@
     <string name="shorts_mode_show">Shown</string>
     <string name="shorts_mode_hide">Hidden</string>
     <string name="shorts_mode_video">Hidden, open as videos</string>
+    <string name="back">Back</string>
 </resources>

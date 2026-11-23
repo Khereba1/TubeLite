@@ -145,6 +145,7 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code
 - 1.36: `pickOption` is now a bottom sheet too (`newSheet`/`showSheet`, tick on the current value); the video sheet says "Default quality/speed" (the choice is the app default); the Shorts sheet has no Downloads row;
   both WebViews have their scroll bars turned off (`isVerticalScrollBarEnabled = false`).
 - 1.37: simple white vector icons in the sheet rows (`res/drawable/ic_m_*.xml`, Material paths, `menuRow(icon=)`); the error log row exists ONLY in the app sheet (home/search/channels), not in the video or Shorts sheets.
+- 1.38: choice sheets (`pickOption`) have a back arrow in the header and the phone's back button / outside tap goes back to the settings sheet (`setOnCancelListener { showMenu(lastMenu) }`); picking a value dismisses without that listener.
 - Error log: launcher-icon long-press shortcut AND a neutral "Error log" button in the quality dialog (player page).
 - Zoom-to-fill (`setZoom` in inject.js): computes the picture size from `videoWidth/videoHeight`, then scales the video's PARENT container with a rule in our own
   stylesheet (`.__tube_zoom{transform:scale(s) !important}`), because YouTube rewrites the <video> element's inline style. If the container scale changes nothing it

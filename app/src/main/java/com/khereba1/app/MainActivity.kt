@@ -663,7 +663,9 @@ class MainActivity : ComponentActivity() {
         titleRes: Int, labels: Array<String>, values: Array<String>, current: String, onPick: (String) -> Unit
     ) {
         val checked = values.indexOf(current).coerceAtLeast(0)
-        val (dialog, sheet) = newSheet(getString(titleRes))
+        val (dialog, sheet) = newSheet(getString(titleRes)) { showMenu(lastMenu) }
+        // the phone's back button (or a tap outside) goes back to the sheet instead of closing everything
+        dialog.setOnCancelListener { showMenu(lastMenu) }
         for (i in labels.indices) {
             sheet.addView(menuRow(labels[i], if (i == checked) "\u2713" else "", android.graphics.Color.WHITE) {
                 dialog.dismiss()
@@ -811,7 +813,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /** An empty bottom sheet with a title; fill it with [menuRow]s, then [showSheet]. */
-    private fun newSheet(titleText: String): Pair<android.app.Dialog, LinearLayout> {
+    private fun newSheet(titleText: String, onBack: (() -> Unit)? = null): Pair<android.app.Dialog, LinearLayout> {
         val dialog = android.app.Dialog(this)
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         val d = resources.displayMetrics.density
@@ -828,8 +830,25 @@ class MainActivity : ComponentActivity() {
         title.textSize = 18f
         title.setTypeface(null, android.graphics.Typeface.BOLD)
         title.setTextColor(android.graphics.Color.WHITE)
-        title.setPadding((20 * d).toInt(), 0, (20 * d).toInt(), (8 * d).toInt())
-        sheet.addView(title)
+        val header = LinearLayout(this)
+        header.orientation = LinearLayout.HORIZONTAL
+        header.gravity = Gravity.CENTER_VERTICAL
+        header.setPadding((20 * d).toInt(), 0, (20 * d).toInt(), (8 * d).toInt())
+        if (onBack != null) {
+            // a back arrow; the phone's back button does the same (see pickOption)
+            val arrow = android.widget.ImageView(this)
+            arrow.setImageResource(R.drawable.ic_m_back)
+            arrow.contentDescription = getString(R.string.back)
+            arrow.setOnClickListener {
+                dialog.dismiss()
+                onBack()
+            }
+            val lp = LinearLayout.LayoutParams((28 * d).toInt(), (28 * d).toInt())
+            lp.marginEnd = (12 * d).toInt()
+            header.addView(arrow, lp)
+        }
+        header.addView(title)
+        sheet.addView(header)
         return Pair(dialog, sheet)
     }
 
