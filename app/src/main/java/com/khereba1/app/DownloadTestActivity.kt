@@ -49,6 +49,14 @@ class DownloadTestActivity : Activity() {
     private lateinit var analyzeButton: Button
     private lateinit var downloadButton: Button
     private lateinit var listButton: Button
+    private lateinit var runCard: LinearLayout
+    private lateinit var runThumb: ImageView
+    private lateinit var runTitle: TextView
+    private lateinit var runMeta: TextView
+    private lateinit var runBar: android.widget.ProgressBar
+    private lateinit var runStatus: TextView
+    private lateinit var runCancel: Button
+    private var runThumbId = ""
     private lateinit var updateStableButton: Button
     private lateinit var updateNightlyButton: Button
     private lateinit var statusView: TextView
@@ -148,6 +156,32 @@ class DownloadTestActivity : Activity() {
         engineView = label(getString(R.string.dl_status_starting_engine), 12f, muted)
         root.addView(engineView)
 
+        // the download that is running now (same look as before the queue existed); tap = the full list
+        runCard = card()
+        runCard.visibility = View.GONE
+        runCard.setOnClickListener { startActivity(Intent(this, DownloadsActivity::class.java)) }
+        runThumb = ImageView(this)
+        runThumb.scaleType = ImageView.ScaleType.CENTER_CROP
+        runThumb.background = roundBg(Color.BLACK, 12)
+        runThumb.outlineProvider = ViewOutlineProvider.BACKGROUND
+        runThumb.clipToOutline = true
+        runCard.addView(runThumb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(180)))
+        runTitle = label("", 15f, Color.WHITE, true)
+        addTo(runCard, runTitle, 10)
+        runMeta = label("", 12f, muted)
+        addTo(runCard, runMeta, 2)
+        runBar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal)
+        runBar.max = 100
+        runBar.progressTintList = ColorStateList.valueOf(accent)
+        addTo(runCard, runBar, 10)
+        runStatus = label("", 13f, Color.WHITE)
+        addTo(runCard, runStatus, 4)
+        runCancel = styledButton(getString(R.string.dl_cancel), false) {
+            startService(Intent(this, DownloadService::class.java).setAction(DownloadService.ACTION_CANCEL))
+        }
+        addTo(runCard, runCancel, 10)
+        addTo(root, runCard)
+
         // link
         linkCard = card()
         urlBox = EditText(this)
@@ -243,10 +277,44 @@ class DownloadTestActivity : Activity() {
                 refreshButtons()
             }
         }
+        DownloadStore.addListener(storeListener)
         refreshButtons()
+        updateRunCard()
+    }
+
+    private val storeListener: () -> Unit = {
+        runOnUiThread { if (!isDestroyed) updateRunCard() }
+    }
+
+    /** Shows the running download (picture, progress, Cancel); hidden when nothing runs. */
+    private fun updateRunCard() {
+        val item = DownloadStore.all().firstOrNull { it.state == DownloadStore.RUNNING }
+        if (item == null) {
+            runCard.visibility = View.GONE
+            return
+        }
+        runCard.visibility = View.VISIBLE
+        runTitle.text = item.title
+        val waiting = DownloadStore.queuedCount()
+        runMeta.text = item.label + (if (waiting > 0) "  \u2022  " + getString(R.string.dl_queue_more, waiting) else "")
+        runBar.isIndeterminate = item.progress < 0
+        if (item.progress >= 0) runBar.progress = item.progress
+        runStatus.text = item.message
+        if (item.videoId != runThumbId) {
+            runThumbId = item.videoId
+            runThumb.setImageDrawable(null)
+            val id = item.videoId
+            if (id.isNotEmpty()) {
+                Thread {
+                    val bmp = DownloadEngine.loadThumbnail(id)
+                    if (bmp != null) runOnUiThread { if (!isDestroyed && runThumbId == id) runThumb.setImageBitmap(bmp) }
+                }.start()
+            }
+        }
     }
 
     override fun onStop() {
+        DownloadStore.removeListener(storeListener)
         DownloadService.listener = null
         super.onStop()
     }

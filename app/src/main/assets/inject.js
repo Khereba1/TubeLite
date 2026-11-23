@@ -129,7 +129,9 @@
     'ytm-in-feed-ad-layout-renderer', '#player-ads', '.video-ads', '.ytp-ad-overlay-container',
     '.ytp-ad-image-overlay'
   ].join(',') + '{display:none !important;}' +
-    '*{-webkit-tap-highlight-color:transparent;}html{touch-action:manipulation;}';
+    '*{-webkit-tap-highlight-color:transparent;}html{touch-action:manipulation;}' +
+    /* the top bar and the chip row must never be see-through (during a very fast scroll the page showed through for a moment) */
+    'ytm-mobile-topbar-renderer,.mobile-topbar-header,ytm-chip-cloud-renderer{background-color:var(--yt-spec-base-background,#0f0f0f) !important;}';
   function addStyle() {
     try {
       if (document.getElementById('__tube_css')) return;

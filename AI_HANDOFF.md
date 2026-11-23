@@ -136,6 +136,8 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code
     the progress notification opens it; a finished download gets its own notification (tap = open the file). `DownloadEngine`: analysis has its own process id (`ANALYZE_ID`) so it can run
     during a download; `cancel()` only touches the download; the automatic engine update is skipped while `downloading`.
     Not compiled by the assistant: if the build fails, the `e:` lines name the file and line.
+- 1.34: the "New download" screen shows a card for the running download again (thumbnail, progress, Cancel; `updateRunCard`, fed by `DownloadStore` listener; tap = Downloads list).
+  inject.js CSS forces an opaque background on `ytm-mobile-topbar-renderer`, `.mobile-topbar-header`, `ytm-chip-cloud-renderer` (the bar flashed transparent during very fast scrolling; UNCONFIRMED fix).
 - Error log: launcher-icon long-press shortcut AND a neutral "Error log" button in the quality dialog (player page).
 - Zoom-to-fill (`setZoom` in inject.js): computes the picture size from `videoWidth/videoHeight`, then scales the video's PARENT container with a rule in our own
   stylesheet (`.__tube_zoom{transform:scale(s) !important}`), because YouTube rewrites the <video> element's inline style. If the container scale changes nothing it
