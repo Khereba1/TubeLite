@@ -2,7 +2,6 @@ package com.khereba1.app
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.AlertDialog
 import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
@@ -322,6 +321,8 @@ class MainActivity : ComponentActivity() {
         val wv = YtWebView(this, role == "player")
         wv.setBackgroundColor(Color.BLACK)
         wv.overScrollMode = View.OVER_SCROLL_NEVER // no stretch effect that makes the whole page jiggle
+        wv.isVerticalScrollBarEnabled = false // no browser-like scroll bar at the side
+        wv.isHorizontalScrollBarEnabled = false
 
         val s = wv.settings
         s.javaScriptEnabled = true
@@ -657,25 +658,29 @@ class MainActivity : ComponentActivity() {
         browseView.evaluateJavascript(js, null)
     }
 
+    /** A choice list in the same bottom-sheet style as the settings sheet; the current value has a tick. */
     private fun pickOption(
         titleRes: Int, labels: Array<String>, values: Array<String>, current: String, onPick: (String) -> Unit
     ) {
         val checked = values.indexOf(current).coerceAtLeast(0)
-        AlertDialog.Builder(this)
-            .setTitle(titleRes)
-            .setSingleChoiceItems(labels, checked) { dialog, which ->
-                onPick(values[which])
+        val (dialog, sheet) = newSheet(getString(titleRes))
+        for (i in labels.indices) {
+            sheet.addView(menuRow(labels[i], if (i == checked) "\u2713" else "", android.graphics.Color.WHITE) {
                 dialog.dismiss()
+                onPick(values[i])
                 savePrefsAndApply()
                 showMenu(lastMenu) // back to the sheet, now showing the new value
-            }
-            .show()
+            })
+        }
+        showSheet(dialog, sheet)
     }
 
     private var lastMenu = MENU_APP
 
     /** One row of a settings sheet: the name, and the current value at the other end. */
-    private fun menuRow(name: String, value: String, onClick: () -> Unit): View {
+    private fun menuRow(
+        name: String, value: String, valueColor: Int = android.graphics.Color.parseColor("#B0B0B0"), onClick: () -> Unit
+    ): View {
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
         row.gravity = Gravity.CENTER_VERTICAL
@@ -693,7 +698,7 @@ class MainActivity : ComponentActivity() {
             val v = android.widget.TextView(this)
             v.text = value
             v.textSize = 14f
-            v.setTextColor(android.graphics.Color.parseColor("#B0B0B0"))
+            v.setTextColor(valueColor)
             row.addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
         row.setOnClickListener { onClick() }
@@ -709,31 +714,15 @@ class MainActivity : ComponentActivity() {
      */
     private fun showMenu(kind: Int) {
         lastMenu = kind
-        val dialog = android.app.Dialog(this)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-        val d = resources.displayMetrics.density
-        val sheet = LinearLayout(this)
-        sheet.orientation = LinearLayout.VERTICAL
-        val bg = GradientDrawable()
-        bg.setColor(android.graphics.Color.parseColor("#212121"))
-        val r = 20 * d
-        bg.cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
-        sheet.background = bg
-        sheet.setPadding(0, (16 * d).toInt(), 0, (12 * d).toInt())
-
-        val title = android.widget.TextView(this)
-        title.text = getString(
-            when (kind) {
-                MENU_VIDEO -> R.string.menu_video_title
-                MENU_SHORTS -> R.string.menu_shorts_title
-                else -> R.string.menu_app_title
-            }
+        val (dialog, sheet) = newSheet(
+            getString(
+                when (kind) {
+                    MENU_VIDEO -> R.string.menu_video_title
+                    MENU_SHORTS -> R.string.menu_shorts_title
+                    else -> R.string.menu_app_title
+                }
+            )
         )
-        title.textSize = 18f
-        title.setTypeface(null, android.graphics.Typeface.BOLD)
-        title.setTextColor(android.graphics.Color.WHITE)
-        title.setPadding((20 * d).toInt(), 0, (20 * d).toInt(), (8 * d).toInt())
-        sheet.addView(title)
 
         val qualityLabels = Array(qualityValues.size) { i -> qualityLabel(qualityValues[i]) }
         val speedLabels = Array(speedValues.size) { i -> speedLabel(speedValues[i]) }
@@ -795,7 +784,6 @@ class MainActivity : ComponentActivity() {
                     pickOption(R.string.settings_shorts_quality, qualityLabels, qualityValues, shortsQuality) { shortsQuality = it }
                 }
                 shortsModeRow()
-                downloadsRow()
             }
             else -> {
                 qualityRow(R.string.settings_video_quality)
@@ -811,6 +799,33 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        showSheet(dialog, sheet)
+    }
+
+    /** An empty bottom sheet with a title; fill it with [menuRow]s, then [showSheet]. */
+    private fun newSheet(titleText: String): Pair<android.app.Dialog, LinearLayout> {
+        val dialog = android.app.Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        val d = resources.displayMetrics.density
+        val sheet = LinearLayout(this)
+        sheet.orientation = LinearLayout.VERTICAL
+        val bg = GradientDrawable()
+        bg.setColor(android.graphics.Color.parseColor("#212121"))
+        val r = 20 * d
+        bg.cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
+        sheet.background = bg
+        sheet.setPadding(0, (16 * d).toInt(), 0, (12 * d).toInt())
+        val title = android.widget.TextView(this)
+        title.text = titleText
+        title.textSize = 18f
+        title.setTypeface(null, android.graphics.Typeface.BOLD)
+        title.setTextColor(android.graphics.Color.WHITE)
+        title.setPadding((20 * d).toInt(), 0, (20 * d).toInt(), (8 * d).toInt())
+        sheet.addView(title)
+        return Pair(dialog, sheet)
+    }
+
+    private fun showSheet(dialog: android.app.Dialog, sheet: LinearLayout) {
         val scroll = android.widget.ScrollView(this)
         scroll.addView(sheet)
         dialog.setContentView(scroll)

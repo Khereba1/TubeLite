@@ -80,8 +80,8 @@
     <string name="menu_shorts_title">Shorts</string>
     <string name="menu_download_video">Download this video</string>
     <string name="menu_download_short">Download this Short</string>
-    <string name="menu_quality">Quality</string>
-    <string name="menu_speed">Speed</string>
+    <string name="menu_quality">Default quality</string>
+    <string name="menu_speed">Default speed</string>
     <string name="menu_shorts_mode">Shorts</string>
     <string name="shorts_mode_show">Shown</string>
     <string name="shorts_mode_hide">Hidden</string>

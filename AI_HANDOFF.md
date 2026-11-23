@@ -142,6 +142,8 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code
   MENU_SHORTS (browse button while `isShortsUrl(browseView.url)`: download this Short, Shorts quality, Shorts mode, downloads), MENU_APP (browse button elsewhere: default quality/speed, Shorts mode,
   Shorts quality while shown, downloads, log). "Shorts mode" is ONE 3-way choice (show / hide / hide + open as videos) mapped onto the prefs `hide_shorts` + `shorts_as_video`.
   `pickOption` re-opens the sheet via `lastMenu`. The "Download from link" button (string `dl_new`) lives on the Downloads screen. No icons in the rows (no icon assets yet).
+- 1.36: `pickOption` is now a bottom sheet too (`newSheet`/`showSheet`, tick on the current value); the video sheet says "Default quality/speed" (the choice is the app default); the Shorts sheet has no Downloads row;
+  both WebViews have their scroll bars turned off (`isVerticalScrollBarEnabled = false`).
 - Error log: launcher-icon long-press shortcut AND a neutral "Error log" button in the quality dialog (player page).
 - Zoom-to-fill (`setZoom` in inject.js): computes the picture size from `videoWidth/videoHeight`, then scales the video's PARENT container with a rule in our own
   stylesheet (`.__tube_zoom{transform:scale(s) !important}`), because YouTube rewrites the <video> element's inline style. If the container scale changes nothing it

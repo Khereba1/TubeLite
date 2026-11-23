@@ -79,8 +79,8 @@
     <string name="menu_shorts_title">الشورتس</string>
     <string name="menu_download_video">تحميل الفيديو ده</string>
     <string name="menu_download_short">تحميل الشورت ده</string>
-    <string name="menu_quality">الجودة</string>
-    <string name="menu_speed">السرعة</string>
+    <string name="menu_quality">الجودة الافتراضية</string>
+    <string name="menu_speed">السرعة الافتراضية</string>
     <string name="menu_shorts_mode">الشورتس</string>
     <string name="shorts_mode_show">ظاهرة</string>
     <string name="shorts_mode_hide">مخفية</string>
