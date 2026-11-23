@@ -18,7 +18,6 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ScrollView
@@ -27,8 +26,8 @@ import androidx.core.content.ContextCompat
 
 /**
  * The download screen (class name kept from the first test version). Analyzes a YouTube link (automatically when it
- * opens from a video), lists the video and audio qualities, and hands the download to [DownloadService], which keeps
- * working in the background with a notification.
+ * opens from a video), lists the video and audio qualities, and adds the choice to the download queue
+ * ([DownloadStore]); [DownloadService] works through the queue in the background. [DownloadsActivity] shows the list.
  */
 class DownloadTestActivity : Activity() {
 
@@ -49,10 +48,9 @@ class DownloadTestActivity : Activity() {
     private lateinit var optionsBox: LinearLayout
     private lateinit var analyzeButton: Button
     private lateinit var downloadButton: Button
-    private lateinit var cancelButton: Button
+    private lateinit var listButton: Button
     private lateinit var updateStableButton: Button
     private lateinit var updateNightlyButton: Button
-    private lateinit var progressBar: ProgressBar
     private lateinit var statusView: TextView
     private lateinit var logView: TextView
     private val logBuffer = StringBuilder()
@@ -61,7 +59,6 @@ class DownloadTestActivity : Activity() {
     private var analyzedUrl = ""
     private var analyzedId = ""
     private var radioGroup: RadioGroup? = null
-    private var modeRunning = false
     private var shownThumbId = ""
 
     @Volatile
@@ -141,6 +138,7 @@ class DownloadTestActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        DownloadStore.init(applicationContext)
 
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
@@ -192,19 +190,17 @@ class DownloadTestActivity : Activity() {
         val actions = LinearLayout(this)
         actions.orientation = LinearLayout.HORIZONTAL
         downloadButton = styledButton(getString(R.string.dl_download), true) { onDownloadClicked() }
-        cancelButton = styledButton(getString(R.string.dl_cancel), false) { cancelDownload() }
+        listButton = styledButton(getString(R.string.dl_open_list), false) {
+            startActivity(Intent(this, DownloadsActivity::class.java))
+        }
         val dlp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 2f)
         dlp.marginEnd = dp(8)
         actions.addView(downloadButton, dlp)
-        actions.addView(cancelButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        actions.addView(listButton, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         addTo(root, actions)
 
-        progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal)
-        progressBar.max = 100
-        progressBar.progressTintList = ColorStateList.valueOf(accent)
-        addTo(root, progressBar, 10)
         statusView = label("", 13f, Color.WHITE)
-        addTo(root, statusView, 4)
+        addTo(root, statusView, 10)
 
         // engine
         val engineCard = card()
@@ -240,15 +236,13 @@ class DownloadTestActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
-        DownloadService.listener = { text, pct, finished ->
+        // only the raw log lines of the running download come here; progress is shown on the Downloads screen
+        DownloadService.listener = { text, pct, _ ->
             runOnUiThread {
-                if (pct >= 0) progressBar.progress = pct
-                statusView.text = text
-                if (pct < 0 || finished) appendLog(text)
+                if (pct < 0) appendLog(text)
                 refreshButtons()
             }
         }
-        if (DownloadService.running) statusView.text = getString(R.string.dl_downloading)
         refreshButtons()
     }
 
@@ -264,41 +258,12 @@ class DownloadTestActivity : Activity() {
 
     private fun refreshButtons() {
         val downloading = DownloadService.running
-        look(downloadButton, engineReady && !downloading && (!busy || analyzing))
-        look(analyzeButton, engineReady && !busy && !downloading)
+        // adding to the queue and analyzing are fine while something downloads; swapping the engine is not
+        look(downloadButton, engineReady && (!busy || analyzing))
+        look(analyzeButton, engineReady && !busy)
         look(updateStableButton, engineReady && !busy && !downloading)
         look(updateNightlyButton, engineReady && !busy && !downloading)
-        look(cancelButton, downloading)
-        applyMode()
-    }
-
-    /**
-     * While a download runs (also when the screen is opened from its notification) only the video being downloaded
-     * is shown; otherwise the link, the video and its qualities.
-     */
-    private fun applyMode() {
-        val running = DownloadService.running
-        if (running == modeRunning) return
-        modeRunning = running
-        if (running) {
-            linkCard.visibility = View.GONE
-            optionsCard.visibility = View.GONE
-            infoCard.visibility = View.VISIBLE
-            videoTitle.text = DownloadService.currentTitle
-            videoMeta.text = DownloadService.currentLabel
-            showThumb(DownloadService.currentId)
-        } else {
-            linkCard.visibility = View.VISIBLE
-            val info = currentInfo
-            if (info != null) {
-                fillInfo(info)
-                infoCard.visibility = View.VISIBLE
-                optionsCard.visibility = View.VISIBLE
-            } else {
-                infoCard.visibility = View.GONE
-                optionsCard.visibility = View.GONE
-            }
-        }
+        look(listButton, true)
     }
 
     private fun setBusy(value: Boolean) {
@@ -381,10 +346,6 @@ class DownloadTestActivity : Activity() {
         }.start()
     }
 
-    private fun cancelDownload() {
-        startService(Intent(this, DownloadService::class.java).setAction(DownloadService.ACTION_CANCEL))
-    }
-
     // ------------------------------------------------------------------ analysis
 
     private fun analyze(thenDownload: Boolean) {
@@ -396,7 +357,6 @@ class DownloadTestActivity : Activity() {
         }
         setBusy(true)
         analyzing = true
-        progressBar.progress = 0
         startPhase(getString(R.string.dl_status_analyzing))
         val t0 = System.currentTimeMillis()
         Thread {
@@ -529,10 +489,6 @@ class DownloadTestActivity : Activity() {
     // ------------------------------------------------------------------ download (runs in DownloadService)
 
     private fun onDownloadClicked() {
-        if (DownloadService.running) {
-            statusView.text = getString(R.string.dl_in_progress)
-            return
-        }
         if (busy) {
             if (analyzing) {
                 pendingDownload = true
@@ -552,24 +508,20 @@ class DownloadTestActivity : Activity() {
             statusView.text = getString(R.string.dl_status_choose)
             return
         }
-        startDownload(analyzedUrl, parsed.options[index])
+        enqueue(analyzedUrl, parsed, parsed.options[index])
     }
 
-    private fun startDownload(url: String, option: DownloadEngine.Option) {
-        val i = Intent(this, DownloadService::class.java)
-            .setAction(DownloadService.ACTION_START)
-            .putExtra(DownloadService.EXTRA_URL, url)
-            .putExtra(DownloadService.EXTRA_HEIGHT, option.height)
-            .putExtra(DownloadService.EXTRA_AUDIO, option.audioOnly)
-            .putExtra(DownloadService.EXTRA_FORMAT_ID, option.formatId ?: "")
-            .putExtra(DownloadService.EXTRA_EXT, option.ext)
-            .putExtra(DownloadService.EXTRA_TITLE, currentInfo?.title ?: "")
-            .putExtra(DownloadService.EXTRA_LABEL, optionLabel(option))
-            .putExtra(DownloadService.EXTRA_VIDEO_ID, currentInfo?.id ?: "")
+    private fun enqueue(url: String, info: DownloadEngine.Info, option: DownloadEngine.Option) {
+        val fid = option.formatId ?: ""
+        if (DownloadStore.findActive(url, option.height, option.audioOnly, fid) != null) {
+            statusView.text = getString(R.string.dl_already_queued)
+            return
+        }
+        val waitingBefore = DownloadStore.activeCount()
+        DownloadStore.add(url, info.id, info.title, optionLabel(option), option.height, option.audioOnly, fid, option.ext)
         try {
-            progressBar.progress = 0
-            statusView.text = getString(R.string.dl_notif_preparing)
-            ContextCompat.startForegroundService(this, i)
+            ContextCompat.startForegroundService(this, Intent(this, DownloadService::class.java).setAction(DownloadService.ACTION_START))
+            statusView.text = if (waitingBefore > 0) getString(R.string.dl_added_queue, waitingBefore) else getString(R.string.dl_added_now)
         } catch (e: Throwable) {
             AppLog.log("DL", "cannot start the download service", e)
             statusView.text = getString(R.string.dl_err_generic)

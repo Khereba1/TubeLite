@@ -13,8 +13,8 @@ android {
         applicationId = "com.khereba1.tubelite"
         minSdk = 29
         targetSdk = 34
-        versionCode = 33
-        versionName = "1.32"
+        versionCode = 34
+        versionName = "1.33"
 
         // Only the phone's CPU type (the download engine ships native code per CPU type, which is big).
         ndk {
@@ -83,6 +83,7 @@ dependencies {
 
     // WebView helpers: document-start script, origin-restricted message bridge, X-Requested-With control
     implementation("androidx.webkit:webkit:1.12.1")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0") // pull down to reload the home page
 
     // Download engine (yt-dlp for Android). 0.18.1 is the version that supports the JavaScript runtime YouTube now needs.
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")

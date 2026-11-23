@@ -16,7 +16,7 @@
     <string name="settings_video_quality">Default video quality</string>
     <string name="settings_shorts_quality">Default Shorts quality</string>
     <string name="settings_speed">Default playback speed</string>
-    <string name="settings_download_test">Download video / audio</string>
+    <string name="settings_download_test">New download</string>
     <string name="settings_hide_shorts">Hide Shorts</string>
     <string name="settings_shorts_as_video">Play Shorts as videos</string>
     <string name="settings_on">On</string>
@@ -42,7 +42,6 @@
     <string name="dl_status_paste">Paste a valid https YouTube link first.</string>
     <string name="dl_status_updating">Updating the engine...</string>
     <string name="dl_downloading">Downloading...</string>
-    <string name="dl_in_progress">A download is already running.</string>
     <string name="dl_queued">The download will start as soon as the analysis ends.</string>
     <string name="dl_saved">Saved to Downloads/TubeLite: %1$s (%2$s)</string>
     <string name="dl_failed">Download failed</string>
@@ -64,4 +63,21 @@
     <string name="dl_err_copy">The file was downloaded but could not be copied to Downloads. It is here:</string>
     <string name="dl_err_generic">Something went wrong. The details are in the log (Details).</string>
     <string name="dl_audio_hint">m4a (AAC) plays everywhere. Opus is smaller and just as good, but some older players and cars cannot open it.</string>
+    <string name="dl_open_list">Downloads</string>
+    <string name="dl_list_title">Downloads</string>
+    <string name="dl_new">New download</string>
+    <string name="dl_clear_finished">Clear finished</string>
+    <string name="dl_empty">No downloads yet.</string>
+    <string name="dl_state_queued">Waiting in the queue</string>
+    <string name="dl_already_queued">This is already in the queue.</string>
+    <string name="dl_added_now">Added. Downloading now.</string>
+    <string name="dl_added_queue">Added to the queue (%1$d before it).</string>
+    <string name="dl_queue_more">+%1$d waiting</string>
+    <string name="dl_interrupted">Interrupted when the app closed. You can try again.</string>
+    <string name="dl_act_open">Open</string>
+    <string name="dl_act_share">Share</string>
+    <string name="dl_act_retry">Try again</string>
+    <string name="dl_act_remove">Remove from list</string>
+    <string name="dl_open_failed">Could not open the file. It may have been moved or deleted.</string>
+    <string name="settings_downloads">Downloads</string>
 </resources>

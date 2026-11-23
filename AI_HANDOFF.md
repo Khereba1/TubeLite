@@ -125,6 +125,17 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code
   layouts the page can differ (video starts at the top, no bar). Planned fix: inject.js measures the real "more" button / bar and reports the rect over the bridge, Kotlin places the buttons from it.
   Compose was removed in 1.32 (plugin, `buildFeatures.compose`, BOM and compose libraries; `androidx.activity:activity` replaces `activity-compose` for ComponentActivity). The UI is plain Views.
   If a build error mentions a missing androidx class after this, add exactly that artifact instead of bringing Compose back.
+- 1.33 additions:
+  * Share: inject.js replaces `navigator.share`/`canShare` with a shim that sends the FIXED-format bridge message `share|<url>\n<title>` (both roles); `MainActivity.shareFromPage` validates
+    (https, <=400 chars, youtu.be or a YouTube host) and opens Android's system chooser (ACTION_SEND text/plain). UNCONFIRMED on a device whether YouTube's own share button calls navigator.share.
+  * Pull to refresh: `SwipeRefreshLayout` around the browse WebView (`refreshLayout`), disabled on watch and Shorts URLs (`doUpdateVisitedHistory`), stops on `onPageFinished` or after 8 s.
+  * Perf: `ensureSettingsButton` returns early when the button is in place; the Shorts interval is 1 s.
+  * Downloads queue + history: `DownloadStore` (JSON in filesDir/downloads.json; QUEUED/RUNNING/DONE/FAILED/CANCELLED; entries left RUNNING/QUEUED by a previous run become FAILED "interrupted").
+    `DownloadTestActivity` (now the "New download" screen) only adds an item (`DownloadStore.add`, duplicate check `findActive`) and starts `DownloadService`, which is a queue worker
+    (`runQueue`, one at a time, `workLock` + `claimNext`, `stopSelf(lastStartId)` only when nothing is left). `DownloadsActivity` lists everything (tap a row: cancel/open/share/retry/remove);
+    the progress notification opens it; a finished download gets its own notification (tap = open the file). `DownloadEngine`: analysis has its own process id (`ANALYZE_ID`) so it can run
+    during a download; `cancel()` only touches the download; the automatic engine update is skipped while `downloading`.
+    Not compiled by the assistant: if the build fails, the `e:` lines name the file and line.
 - Error log: launcher-icon long-press shortcut AND a neutral "Error log" button in the quality dialog (player page).
 - Zoom-to-fill (`setZoom` in inject.js): computes the picture size from `videoWidth/videoHeight`, then scales the video's PARENT container with a rule in our own
   stylesheet (`.__tube_zoom{transform:scale(s) !important}`), because YouTube rewrites the <video> element's inline style. If the container scale changes nothing it
@@ -157,6 +168,7 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code
 - AdBlock.kt: network-level ad rules
 - PlaybackService.kt: background playback service + notification
 - GestureFrame.kt: fullscreen container (works in dispatchTouchEvent because the WebView asks parents not to intercept during pinch; takes a gesture over early and sends the page one ACTION_CANCEL); vertical swipe = brightness (left) / volume (right); pinch out/in = zoom-to-fill on/off (commands "zoom:1"/"zoom:0" -> `setZoom` in inject.js, which scales the <video> element)
+- DownloadStore.kt / DownloadService.kt / DownloadsActivity.kt / DownloadTestActivity.kt / DownloadEngine.kt: download queue, history and yt-dlp wrapper (see 1.33 above)
 - LogActivity.kt: shows AppLog
 - assets/inject.js: bundled page script
 - res/xml/shortcuts.xml: launcher shortcut to LogActivity

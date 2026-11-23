@@ -25,6 +25,12 @@ import java.util.TreeMap
  */
 object DownloadEngine {
     const val PROCESS_ID = "tubelite_download"
+    // an analysis may run while a download is going on (the queue), so it must have its own process id
+    private const val ANALYZE_ID = "tubelite_analyze"
+
+    /** True while a download is running: the engine is then never updated automatically. */
+    @Volatile
+    var downloading = false
 
     @Volatile
     private var ready = false
@@ -41,8 +47,8 @@ object DownloadEngine {
     @Volatile
     private var autoUpdated = false
 
-    // Set by cancel(), cleared when the next analysis/download starts. A cancelled run must never trigger the
-    // automatic update + retry, and never fall back to a second attempt.
+    // Set by cancel(), cleared when the next download starts (analyses do not touch it). A cancelled download must
+    // never trigger the automatic update + retry, and never fall back to a second attempt.
     @Volatile
     private var cancelRequested = false
 
@@ -216,12 +222,14 @@ object DownloadEngine {
     }
 
     /** Runs [block]; if it fails with something an update can fix, updates the engine ONCE per app session and retries. */
-    private fun <T> withAutoUpdate(context: Context, log: (String) -> Unit, block: () -> T): T {
+    private fun <T> withAutoUpdate(context: Context, log: (String) -> Unit, forDownload: Boolean, block: () -> T): T {
         try {
             return block()
         } catch (e: Throwable) {
             val message = e.message ?: e.toString()
-            if (cancelRequested || autoUpdated || !fixableByUpdate(message)) throw e
+            // a cancelled download never retries; an analysis never swaps the engine while a download is using it
+            val blocked = if (forDownload) cancelRequested else downloading
+            if (blocked || autoUpdated || !fixableByUpdate(message)) throw e
             autoUpdated = true
             log("Failed. Updating the engine once, then trying again...")
             try {
@@ -260,8 +268,7 @@ object DownloadEngine {
             val c = cache[key]
             if (c != null && System.currentTimeMillis() - c.time < CACHE_MS) return c.info
         }
-        cancelRequested = false
-        val analysis = withAutoUpdate(context, log) { analyzeOnce(context.applicationContext, url) }
+        val analysis = withAutoUpdate(context, log, false) { analyzeOnce(context.applicationContext, url) }
         synchronized(cache) { cache[key] = Cached(System.currentTimeMillis(), analysis.info, analysis.file) }
         return analysis.info
     }
@@ -282,7 +289,7 @@ object DownloadEngine {
         request.addOption("--dump-single-json")
         request.addOption("--no-playlist")
         request.addOption("--no-warnings")
-        val response = YoutubeDL.getInstance().execute(request, PROCESS_ID) { _, _, _ -> }
+        val response = YoutubeDL.getInstance().execute(request, ANALYZE_ID) { _, _, _ -> }
         val text = response.out ?: ""
         val start = text.indexOf('{')
         val end = text.lastIndexOf('}')
@@ -385,11 +392,14 @@ object DownloadEngine {
         onProgress: (Float, Long, String) -> Unit, log: (String) -> Unit
     ): Result {
         cancelRequested = false
+        downloading = true
         return try {
-            withAutoUpdate(context, log) { downloadOnce(context, url, option, onProgress, log) }
+            withAutoUpdate(context, log, true) { downloadOnce(context, url, option, onProgress, log) }
         } catch (e: Throwable) {
             AppLog.log("ENGINE", "download failed", e)
             Result(false, e.message ?: e.toString())
+        } finally {
+            downloading = false
         }
     }
 

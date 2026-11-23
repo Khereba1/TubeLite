@@ -15,7 +15,7 @@
     <string name="settings_video_quality">جودة الفيديو الافتراضية</string>
     <string name="settings_shorts_quality">جودة الريلز (Shorts) الافتراضية</string>
     <string name="settings_speed">سرعة التشغيل الافتراضية</string>
-    <string name="settings_download_test">تحميل فيديو / صوت</string>
+    <string name="settings_download_test">تحميل جديد</string>
     <string name="settings_hide_shorts">إخفاء الريلز</string>
     <string name="settings_shorts_as_video">تشغيل الريلز كفيديو</string>
     <string name="settings_on">مفعّل</string>
@@ -41,7 +41,6 @@
     <string name="dl_status_paste">ألصق رابط يوتيوب صحيح (https) الأول.</string>
     <string name="dl_status_updating">جاري تحديث المحرك...</string>
     <string name="dl_downloading">جاري التحميل...</string>
-    <string name="dl_in_progress">فيه تحميل شغال بالفعل.</string>
     <string name="dl_queued">التحميل هيبدأ أول ما التحليل يخلص.</string>
     <string name="dl_saved">اتحفظ في Downloads/TubeLite: %1$s (%2$s)</string>
     <string name="dl_failed">التحميل فشل</string>
@@ -63,4 +62,21 @@
     <string name="dl_err_copy">الملف اتحمّل بس ما اتنسخش لمجلد التنزيلات. مكانه:</string>
     <string name="dl_err_generic">حصل خطأ. التفاصيل في السجل (التفاصيل).</string>
     <string name="dl_audio_hint">m4a (AAC) بيشتغل في أي مشغّل. أما Opus فأصغر وبنفس الجودة، بس بعض المشغلات والسيارات القديمة مش بتفتحه.</string>
+    <string name="dl_open_list">التحميلات</string>
+    <string name="dl_list_title">التحميلات</string>
+    <string name="dl_new">تحميل جديد</string>
+    <string name="dl_clear_finished">مسح المنتهي</string>
+    <string name="dl_empty">لسه مفيش تحميلات.</string>
+    <string name="dl_state_queued">مستني في الطابور</string>
+    <string name="dl_already_queued">ده موجود في الطابور بالفعل.</string>
+    <string name="dl_added_now">اتضاف. بيتحمل دلوقتي.</string>
+    <string name="dl_added_queue">اتضاف للطابور (قدامه %1$d).</string>
+    <string name="dl_queue_more">+%1$d مستني</string>
+    <string name="dl_interrupted">اتقطع لما التطبيق اتقفل. تقدر تحاول تاني.</string>
+    <string name="dl_act_open">فتح</string>
+    <string name="dl_act_share">مشاركة</string>
+    <string name="dl_act_retry">حاول تاني</string>
+    <string name="dl_act_remove">شيل من القائمة</string>
+    <string name="dl_open_failed">مقدرتش أفتح الملف. ممكن يكون اتنقل أو اتمسح.</string>
+    <string name="settings_downloads">التحميلات</string>
 </resources>

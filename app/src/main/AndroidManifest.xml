@@ -51,6 +51,10 @@
             android:name=".DownloadTestActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".DownloadsActivity"
+            android:exported="false" />
+
         <service
             android:name=".DownloadService"
             android:exported="false"

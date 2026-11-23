@@ -48,6 +48,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
@@ -107,6 +108,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var root: FrameLayout
     private lateinit var content: LinearLayout
+    private lateinit var refreshLayout: SwipeRefreshLayout
     private lateinit var browseView: YtWebView
     private var playerView: YtWebView? = null
     private lateinit var playerLayer: FrameLayout
@@ -189,7 +191,16 @@ class MainActivity : ComponentActivity() {
         miniBar = buildMiniBar()
         content = LinearLayout(this)
         content.orientation = LinearLayout.VERTICAL
-        content.addView(browseView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        // Pull down at the top of the home/search/channel pages = reload (not on watch pages and Shorts, where a drag means something else).
+        refreshLayout = SwipeRefreshLayout(this)
+        refreshLayout.setColorSchemeColors(0xFFE53935.toInt())
+        refreshLayout.setProgressBackgroundColorSchemeColor(0xFF212121.toInt())
+        refreshLayout.setOnRefreshListener {
+            browseView.reload()
+            handler.postDelayed({ refreshLayout.isRefreshing = false }, 8000) // never spin forever
+        }
+        refreshLayout.addView(browseView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        content.addView(refreshLayout, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         content.addView(
             miniBar,
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -580,16 +591,16 @@ class MainActivity : ComponentActivity() {
     /** The browse page's renderer died (usually the system reclaimed memory): build a fresh page instead of crashing. */
     private fun recreateBrowse() {
         val old = browseView
-        val index = content.indexOfChild(old).coerceAtLeast(0)
         forgetPrefsScript(old)
         try {
-            content.removeView(old)
+            refreshLayout.removeView(old)
             old.destroy()
         } catch (e: Throwable) {
             AppLog.log("MAIN", "old browse page cleanup failed", e)
         }
         browseView = createWebView("browse")
-        content.addView(browseView, index, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        refreshLayout.isRefreshing = false
+        refreshLayout.addView(browseView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         browseView.visibility = if (playerExpanded) View.INVISIBLE else View.VISIBLE
         browseView.loadUrl(HOME_URL)
     }
@@ -687,6 +698,7 @@ class MainActivity : ComponentActivity() {
         if (hideShorts) {
             add(getString(R.string.settings_shorts_as_video) + ": " + onOff(shortsAsVideo)) { toggle { shortsAsVideo = !shortsAsVideo } }
         }
+        add(getString(R.string.settings_downloads)) { startActivity(Intent(this, DownloadsActivity::class.java)) }
         add(getString(R.string.settings_download_test)) {
             startActivity(Intent(this, DownloadTestActivity::class.java).putExtra("url", playerView?.url ?: ""))
         }
@@ -718,9 +730,28 @@ class MainActivity : ComponentActivity() {
 
     // ---------------------------------------------------------------- messages from pages
 
+    /** The page's share button (navigator.share in inject.js): open Android's own share sheet with the YouTube link. */
+    private fun shareFromPage(msg: String) {
+        val body = msg.removePrefix("share|")
+        val url = body.substringBefore('\n').trim()
+        val title = body.substringAfter('\n', "").trim().take(200)
+        val u = Uri.parse(url)
+        val host = u.host
+        if (u.scheme != "https" || url.length > 400 || host == null || !(host == "youtu.be" || isYoutubeHost(host))) return
+        val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+            .putExtra(Intent.EXTRA_TEXT, if (title.isNotEmpty()) title + "\n" + url else url)
+        if (title.isNotEmpty()) send.putExtra(Intent.EXTRA_SUBJECT, title)
+        try {
+            startActivity(Intent.createChooser(send, null))
+        } catch (e: Throwable) {
+            AppLog.log("MAIN", "share failed", e)
+        }
+    }
+
     private fun handleMessage(role: String, msg: String) {
         when {
             msg == "ui|settings" -> if (role == "browse") showSettingsDialog()
+            msg.startsWith("share|") -> shareFromPage(msg)
             msg.startsWith("open|") -> if (role == "browse") openVideo(msg.substring(5))
             msg.startsWith("browse|") -> if (role == "player") openInBrowse(msg.substring(7), true)
             msg.startsWith("dbg|") -> AppLog.log("PAGE", msg.substring(4).take(200)) // log only (either page)
@@ -953,6 +984,8 @@ class MainActivity : ComponentActivity() {
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
             super.doUpdateVisitedHistory(view, url, isReload)
+            // pull-to-refresh only where a downward drag at the top cannot mean something else
+            if (role == "browse" && url != null) refreshLayout.isEnabled = !(isShortsUrl(url) || isWatchUrl(url))
             if (!bridgeSupported || url == null) return
             if (role == "browse" && isWatchUrl(url)) {
                 // The page navigated to a video by itself (link routing missed it): move it to the player page.
@@ -981,6 +1014,7 @@ class MainActivity : ComponentActivity() {
 
         override fun onPageFinished(view: WebView, url: String?) {
             super.onPageFinished(view, url)
+            if (role == "browse") refreshLayout.isRefreshing = false
             // also re-applies the Shorts setting: the document-start copy of the settings may have arrived after inject.js ran
             view.evaluateJavascript(prefsScript() + "window.__tubeApplyShortsPrefs&&window.__tubeApplyShortsPrefs()", null)
         }

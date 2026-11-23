@@ -173,6 +173,24 @@
     } catch (err) {}
   }, true);
 
+  /* ---- Share: the WebView has no Web Share API, so YouTube shows its own short list of apps. With navigator.share
+     defined it hands the link to the app instead, which opens Android's normal share sheet (every app on the phone).
+     Only the link and the title travel (the app checks that it is a YouTube link). ---- */
+  try {
+    if (!navigator.share) {
+      navigator.share = function (data) {
+        try {
+          var u = data && data.url ? String(data.url) : '';
+          if (!/^https:\/\/(?:[a-z0-9-]+\.)?youtube\.com\/|^https:\/\/youtu\.be\//i.test(u)) u = location.href;
+          var t = data && data.title ? String(data.title).replace(/[\r\n]+/g, ' ').slice(0, 200) : '';
+          if (window.TubeBridge) window.TubeBridge.postMessage('share|' + u + '\n' + t);
+        } catch (e) {}
+        return Promise.resolve();
+      };
+      navigator.canShare = function () { return true; };
+    }
+  } catch (e) {}
+
   /* ---- no Shorts: hide what CSS cannot reach (cards of known types, tabs and chips named "Shorts") ---- */
   var CARD_SEL = 'ytm-rich-item-renderer,ytm-video-with-context-renderer,ytm-compact-video-renderer,ytm-media-item,' +
     'ytm-reel-item-renderer,ytm-shorts-lockup-view-model,ytm-shorts-lockup-view-model-v2';
@@ -222,6 +240,7 @@
      If the bar cannot be found (YouTube changed it, or a page without it) a small round button floats above the bottom bar instead.
      The click only sends the fixed message "ui|settings"; the app opens its settings dialog. */
   var SBTN = '__tube_settings_btn';
+  var lastSpotTry = 0;
   function settingsIcon() {
     var ns = 'http://www.w3.org/2000/svg';
     var svg = document.createElementNS(ns, 'svg');
@@ -266,10 +285,18 @@
     try {
       if (role !== 'browse' || !window.TubeBridge) return;
       var cur = document.getElementById(SBTN);
+      var floating = !!(cur && cur.isConnected && cur.getAttribute('data-floating') === '1');
+      if (cur && cur.isConnected && !floating) return; // in the bar already: the cheap path, nothing to measure
+      if (floating) {
+        // measuring forces a layout: look for the bar again only every 2 s
+        var nowT = Date.now();
+        if (nowT - lastSpotTry < 2000) return;
+        lastSpotTry = nowT;
+      }
       var bar = document.querySelector('ytm-mobile-topbar-renderer');
       var spot = bar ? findSearchSpot(bar) : null;
-      if (cur && cur.isConnected) {
-        if (!(spot && cur.getAttribute('data-floating') === '1')) return; // already fine
+      if (floating) {
+        if (!spot) return;
         cur.remove(); // the bar is available now: replace the floating one
       }
       if (!spot && performance.now() < 3500) return; // the bar may simply not be drawn yet
@@ -337,7 +364,7 @@
     ['playing', 'loadedmetadata'].forEach(function (t) {
       document.addEventListener(t, function () { applyShorts(false); }, true);
     });
-    setInterval(function () { applyShorts(false); }, 400); // cheap: returns at once when not on a Short or already applied
+    setInterval(function () { applyShorts(false); }, 1000); // cheap: returns at once when not on a Short or already applied
     return;
   }
 

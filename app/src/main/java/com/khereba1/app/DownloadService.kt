@@ -1,6 +1,5 @@
 package com.khereba1.app
 
-import android.app.DownloadManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -16,44 +15,43 @@ import android.text.format.Formatter
 import java.util.Locale
 
 /**
- * Runs ONE download in the background (foreground service with a progress notification and a Cancel button),
- * so it keeps going when the download screen or the whole app is closed. The screen listens through [listener].
+ * Works through the waiting downloads of [DownloadStore], one after the other, in the background (foreground service
+ * with a progress notification and a Cancel button for the current one), so it keeps going when the screens or the
+ * whole app are closed. The screens watch [DownloadStore]; [listener] only carries the raw log lines.
  */
 class DownloadService : Service() {
 
     companion object {
         const val ACTION_START = "com.khereba1.tubelite.action.DL_START"
         const val ACTION_CANCEL = "com.khereba1.tubelite.action.DL_CANCEL"
-        const val EXTRA_URL = "url"
-        const val EXTRA_HEIGHT = "height"
-        const val EXTRA_AUDIO = "audio"
-        const val EXTRA_FORMAT_ID = "format_id"
-        const val EXTRA_EXT = "ext"
-        const val EXTRA_TITLE = "title"
-        const val EXTRA_LABEL = "label"
-        const val EXTRA_VIDEO_ID = "video_id"
         private const val CHANNEL_PROGRESS = "downloads"
         private const val CHANNEL_DONE = "downloads_done"
         private const val NOTIF_PROGRESS = 2
-        private const val NOTIF_DONE = 3
+        private const val NOTIF_DONE_BASE = 100 // + a number from the download's id, so finished ones do not replace each other
 
+        /** True while the queue is being worked through. */
         @Volatile
         var running = false
-
-        // what is being downloaded (read by the download screen when it is opened from the notification)
-        @Volatile
-        var currentTitle = ""
-
-        @Volatile
-        var currentLabel = ""
-
-        @Volatile
-        var currentId = ""
 
         /** (text, percent or -1, finished). Called from a background thread. */
         @Volatile
         var listener: ((String, Int, Boolean) -> Unit)? = null
     }
+
+    private val workLock = Any()
+
+    @Volatile
+    private var lastStartId = 0
+
+    // the download being worked on
+    @Volatile
+    private var current: DownloadStore.Item? = null
+
+    @Volatile
+    private var currentTitle = ""
+
+    @Volatile
+    private var currentLabel = ""
 
     @Volatile
     private var cancelRequested = false
@@ -69,45 +67,84 @@ class DownloadService : Service() {
     @Volatile
     private var largeIcon: Bitmap? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        DownloadStore.init(applicationContext)
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        lastStartId = startId
         val i = intent ?: return START_NOT_STICKY
         if (i.action == ACTION_CANCEL) {
+            // stops the download that is running now; the next waiting one starts by itself
             cancelRequested = true
             DownloadEngine.cancel()
-            if (!running) stopSelf()
+            if (!running) stopSelf(startId)
             return START_NOT_STICKY
         }
         if (i.action != ACTION_START) return START_NOT_STICKY
 
         // startForeground must be called right after startForegroundService()
-        if (running) {
+        val alreadyRunning = synchronized(workLock) {
+            val was = running
+            running = true
+            was
+        }
+        if (alreadyRunning) {
             startForegroundNow(buildProgress(if (lastText.isNotEmpty()) lastText else getString(R.string.dl_notif_preparing), lastPct))
             return START_NOT_STICKY
         }
         startForegroundNow(buildProgress(getString(R.string.dl_notif_preparing), -1))
+        Thread { runQueue() }.start()
+        return START_NOT_STICKY
+    }
 
-        val url = i.getStringExtra(EXTRA_URL) ?: ""
-        if (!DownloadEngine.isYoutubeUrl(url)) {
-            finishWith(false, getString(R.string.dl_err_generic))
-            return START_NOT_STICKY
+    /** One download after the other until nothing is waiting any more. */
+    private fun runQueue() {
+        try {
+            while (true) {
+                // deciding "nothing left" and clearing `running` happen under the same lock a new start request uses
+                val item = synchronized(workLock) {
+                    val next = DownloadStore.claimNext(getString(R.string.dl_notif_preparing))
+                    if (next == null) running = false
+                    next
+                } ?: break
+                processItem(item)
+            }
+        } catch (e: Throwable) {
+            AppLog.log("DL", "the download queue crashed", e)
+            synchronized(workLock) { running = false }
         }
-        val height = i.getIntExtra(EXTRA_HEIGHT, 0)
-        val audio = i.getBooleanExtra(EXTRA_AUDIO, false)
-        val formatId = i.getStringExtra(EXTRA_FORMAT_ID) ?: ""
-        val ext = i.getStringExtra(EXTRA_EXT) ?: ""
-        val option = DownloadEngine.Option(height, audio, 0L, if (formatId.isEmpty()) null else formatId, 0, ext)
-        currentTitle = i.getStringExtra(EXTRA_TITLE) ?: ""
-        currentLabel = i.getStringExtra(EXTRA_LABEL) ?: ""
-        currentId = i.getStringExtra(EXTRA_VIDEO_ID) ?: ""
-        largeIcon = null
+        synchronized(workLock) {
+            // a newer start request may have arrived meanwhile: then it keeps the service (and its notification) alive
+            if (!running) {
+                try {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } catch (e: Throwable) {
+                    // ignore
+                }
+                stopSelf(lastStartId)
+            }
+        }
+    }
 
-        running = true
+    private fun processItem(item: DownloadStore.Item) {
         cancelRequested = false
+        current = item
+        currentTitle = item.title
+        currentLabel = item.label
+        largeIcon = null
         lastText = ""
         lastPct = -1
         publish(getString(R.string.dl_notif_preparing), -1, false)
-        Thread { work(url, option) }.start()
-        return START_NOT_STICKY
+        val option = DownloadEngine.Option(
+            item.height, item.audio, 0L, if (item.formatId.isEmpty()) null else item.formatId, 0, item.ext
+        )
+        if (!DownloadEngine.isYoutubeUrl(item.url)) {
+            finishItem(item, false, getString(R.string.dl_err_generic))
+            return
+        }
+        work(item, option)
     }
 
     private fun squareCrop(b: Bitmap): Bitmap {
@@ -115,15 +152,16 @@ class DownloadService : Service() {
         return Bitmap.createBitmap(b, (b.width - side) / 2, (b.height - side) / 2, side, side)
     }
 
-    private fun work(url: String, option: DownloadEngine.Option) {
+    private fun work(item: DownloadStore.Item, option: DownloadEngine.Option) {
+        val url = item.url
         var ok = false
         var text = ""
         var savedUri: Uri? = null
         var savedMime = ""
         val t0 = System.currentTimeMillis()
         try {
-            if (currentId.isNotEmpty()) {
-                val thumb = DownloadEngine.loadThumbnail(currentId)
+            if (item.videoId.isNotEmpty()) {
+                val thumb = DownloadEngine.loadThumbnail(item.videoId)
                 if (thumb != null) {
                     largeIcon = squareCrop(thumb)
                     publish(getString(R.string.dl_notif_preparing), -1, false)
@@ -172,7 +210,7 @@ class DownloadService : Service() {
             AppLog.log("DL", "download crashed", e)
             text = getString(R.string.dl_err_generic)
         }
-        finishWith(ok, text, savedUri, savedMime)
+        finishItem(item, ok, text, savedUri, savedMime)
     }
 
     private fun formatEta(sec: Long): String {
@@ -199,6 +237,7 @@ class DownloadService : Service() {
         if (!finished) {
             lastText = text
             lastPct = pct
+            if (pct >= 0) current?.let { DownloadStore.progress(it, pct, text) }
             try {
                 getSystemService(NotificationManager::class.java).notify(NOTIF_PROGRESS, buildProgress(text, pct))
             } catch (e: Throwable) {
@@ -208,36 +247,42 @@ class DownloadService : Service() {
         listener?.invoke(text, pct, finished)
     }
 
-    private fun finishWith(ok: Boolean, text: String, uri: Uri? = null, mime: String = "") {
-        running = false
-        try {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            val nm = getSystemService(NotificationManager::class.java)
-            ensureChannels(nm)
-            // tap = open the downloaded file itself (falls back to the Downloads app)
-            val openIntent = if (ok && uri != null) {
-                Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            } else {
-                Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    private fun finishItem(item: DownloadStore.Item, ok: Boolean, text: String, uri: Uri? = null, mime: String = "") {
+        val cancelled = !ok && cancelRequested
+        DownloadStore.finish(
+            item,
+            if (ok) DownloadStore.DONE else if (cancelled) DownloadStore.CANCELLED else DownloadStore.FAILED,
+            text, uri?.toString() ?: "", mime
+        )
+        current = null
+        if (!cancelled) {
+            try {
+                val nm = getSystemService(NotificationManager::class.java)
+                ensureChannels(nm)
+                // tap = open the downloaded file itself (falls back to the Downloads screen)
+                val openIntent = if (ok && uri != null) {
+                    Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } else {
+                    Intent(this, DownloadsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                val open = PendingIntent.getActivity(this, 5 + (item.id % 1000).toInt(), openIntent, PendingIntent.FLAG_IMMUTABLE)
+                val n = Notification.Builder(this, CHANNEL_DONE)
+                    .setSmallIcon(if (ok) android.R.drawable.stat_sys_download_done else android.R.drawable.stat_notify_error)
+                    .setColor(0xFFE53935.toInt())
+                    .setContentTitle(if (item.title.isNotEmpty()) item.title else getString(if (ok) R.string.dl_notif_done else R.string.dl_failed))
+                    .setSubText(getString(if (ok) R.string.dl_notif_done else R.string.dl_failed))
+                    .setContentText(text)
+                    .setStyle(Notification.BigTextStyle().bigText(text))
+                    .setContentIntent(open)
+                    .setAutoCancel(true)
+                    .build()
+                nm.notify(NOTIF_DONE_BASE + (item.id % 1000).toInt(), n)
+            } catch (e: Throwable) {
+                AppLog.log("DL", "final notification failed", e)
             }
-            val open = PendingIntent.getActivity(this, 5, openIntent, PendingIntent.FLAG_IMMUTABLE)
-            val n = Notification.Builder(this, CHANNEL_DONE)
-                .setSmallIcon(if (ok) android.R.drawable.stat_sys_download_done else android.R.drawable.stat_notify_error)
-                .setColor(0xFFE53935.toInt())
-                .setContentTitle(if (currentTitle.isNotEmpty()) currentTitle else getString(if (ok) R.string.dl_notif_done else R.string.dl_failed))
-                .setSubText(getString(if (ok) R.string.dl_notif_done else R.string.dl_failed))
-                .setContentText(text)
-                .setStyle(Notification.BigTextStyle().bigText(text))
-                .setContentIntent(open)
-                .setAutoCancel(true)
-                .build()
-            nm.notify(NOTIF_DONE, n)
-        } catch (e: Throwable) {
-            AppLog.log("DL", "final notification failed", e)
         }
         listener?.invoke(text, if (ok) 100 else -1, true)
-        stopSelf()
     }
 
     private fun startForegroundNow(n: Notification) {
@@ -267,7 +312,7 @@ class DownloadService : Service() {
         val cancel = PendingIntent.getService(
             this, 4, Intent(this, DownloadService::class.java).setAction(ACTION_CANCEL), flags
         )
-        val open = PendingIntent.getActivity(this, 6, Intent(this, DownloadTestActivity::class.java), flags)
+        val open = PendingIntent.getActivity(this, 6, Intent(this, DownloadsActivity::class.java), flags)
         val builder = Notification.Builder(this, CHANNEL_PROGRESS)
             .setSmallIcon(R.drawable.ic_stat_download)
             .setColor(0xFFE53935.toInt())
@@ -278,7 +323,9 @@ class DownloadService : Service() {
             .setOnlyAlertOnce(true)
             .setOngoing(true)
             .setProgress(100, if (pct < 0) 0 else pct, pct < 0)
-        if (currentLabel.isNotEmpty()) builder.setSubText(currentLabel)
+        val waiting = DownloadStore.queuedCount()
+        val sub = currentLabel + (if (waiting > 0) (if (currentLabel.isNotEmpty()) "  \u2022  " else "") + getString(R.string.dl_queue_more, waiting) else "")
+        if (sub.isNotEmpty()) builder.setSubText(sub)
         val icon = largeIcon
         if (icon != null) builder.setLargeIcon(icon)
         return builder
