@@ -679,7 +679,8 @@ class MainActivity : ComponentActivity() {
 
     /** One row of a settings sheet: the name, and the current value at the other end. */
     private fun menuRow(
-        name: String, value: String, valueColor: Int = android.graphics.Color.parseColor("#B0B0B0"), onClick: () -> Unit
+        name: String, value: String, valueColor: Int = android.graphics.Color.parseColor("#B0B0B0"), icon: Int = 0,
+        onClick: () -> Unit
     ): View {
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
@@ -689,6 +690,14 @@ class MainActivity : ComponentActivity() {
         val d = resources.displayMetrics.density
         row.setPadding((20 * d).toInt(), 0, (20 * d).toInt(), 0)
         row.minimumHeight = (54 * d).toInt()
+        if (icon != 0) {
+            val iv = android.widget.ImageView(this)
+            iv.setImageResource(icon)
+            iv.alpha = 0.9f
+            val lp = LinearLayout.LayoutParams((22 * d).toInt(), (22 * d).toInt())
+            lp.marginEnd = (16 * d).toInt()
+            row.addView(iv, lp)
+        }
         val n = android.widget.TextView(this)
         n.text = name
         n.textSize = 16f
@@ -726,24 +735,24 @@ class MainActivity : ComponentActivity() {
 
         val qualityLabels = Array(qualityValues.size) { i -> qualityLabel(qualityValues[i]) }
         val speedLabels = Array(speedValues.size) { i -> speedLabel(speedValues[i]) }
-        fun row(name: String, value: String, action: () -> Unit) {
-            sheet.addView(menuRow(name, value) {
+        fun row(name: String, value: String, icon: Int, action: () -> Unit) {
+            sheet.addView(menuRow(name, value, icon = icon) {
                 dialog.dismiss()
                 action()
             })
         }
         fun downloadRow(res: Int, url: String?) {
-            row(getString(res), "") {
+            row(getString(res), "", R.drawable.ic_m_download) {
                 startActivity(Intent(this, DownloadTestActivity::class.java).putExtra("url", url ?: ""))
             }
         }
         fun qualityRow(res: Int) {
-            row(getString(res), qualityLabel(quality)) {
+            row(getString(res), qualityLabel(quality), R.drawable.ic_m_quality) {
                 pickOption(res, qualityLabels, qualityValues, quality) { quality = it }
             }
         }
         fun speedRow(res: Int) {
-            row(getString(res), speedLabel(speed)) {
+            row(getString(res), speedLabel(speed), R.drawable.ic_m_speed) {
                 pickOption(res, speedLabels, speedValues, speed) { speed = it }
             }
         }
@@ -753,7 +762,7 @@ class MainActivity : ComponentActivity() {
             )
             val values = arrayOf("show", "hide", "video")
             val current = shortsModeValue()
-            row(getString(R.string.menu_shorts_mode), labels[values.indexOf(current)]) {
+            row(getString(R.string.menu_shorts_mode), labels[values.indexOf(current)], R.drawable.ic_m_shorts) {
                 pickOption(R.string.menu_shorts_mode, labels, values, current) {
                     hideShorts = it != "show"
                     shortsAsVideo = it == "video"
@@ -763,12 +772,12 @@ class MainActivity : ComponentActivity() {
         fun downloadsRow() {
             DownloadStore.init(applicationContext)
             val n = DownloadStore.all().size
-            row(getString(R.string.settings_downloads), if (n > 0) n.toString() else "") {
+            row(getString(R.string.settings_downloads), if (n > 0) n.toString() else "", R.drawable.ic_m_list) {
                 startActivity(Intent(this, DownloadsActivity::class.java))
             }
         }
         fun logRow() {
-            row(getString(R.string.shortcut_log), "") { startActivity(Intent(this, LogActivity::class.java)) }
+            row(getString(R.string.shortcut_log), "", R.drawable.ic_m_log) { startActivity(Intent(this, LogActivity::class.java)) }
         }
 
         when (kind) {
@@ -776,11 +785,10 @@ class MainActivity : ComponentActivity() {
                 downloadRow(R.string.menu_download_video, playerView?.url)
                 qualityRow(R.string.menu_quality)
                 speedRow(R.string.menu_speed)
-                logRow()
             }
             MENU_SHORTS -> {
                 downloadRow(R.string.menu_download_short, browseView.url)
-                row(getString(R.string.settings_shorts_quality), qualityLabel(shortsQuality)) {
+                row(getString(R.string.settings_shorts_quality), qualityLabel(shortsQuality), R.drawable.ic_m_quality) {
                     pickOption(R.string.settings_shorts_quality, qualityLabels, qualityValues, shortsQuality) { shortsQuality = it }
                 }
                 shortsModeRow()
@@ -790,7 +798,7 @@ class MainActivity : ComponentActivity() {
                 speedRow(R.string.settings_speed)
                 shortsModeRow()
                 if (!hideShorts) {
-                    row(getString(R.string.settings_shorts_quality), qualityLabel(shortsQuality)) {
+                    row(getString(R.string.settings_shorts_quality), qualityLabel(shortsQuality), R.drawable.ic_m_quality) {
                         pickOption(R.string.settings_shorts_quality, qualityLabels, qualityValues, shortsQuality) { shortsQuality = it }
                     }
                 }
