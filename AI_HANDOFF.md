@@ -138,6 +138,10 @@ Developer: Khereba1. GitHub repo: Khereba1/TubeLite. The AI that edits this code
     Not compiled by the assistant: if the build fails, the `e:` lines name the file and line.
 - 1.34: the "New download" screen shows a card for the running download again (thumbnail, progress, Cancel; `updateRunCard`, fed by `DownloadStore` listener; tap = Downloads list).
   inject.js CSS forces an opaque background on `ytm-mobile-topbar-renderer`, `.mobile-topbar-header`, `ytm-chip-cloud-renderer` (the bar flashed transparent during very fast scrolling; UNCONFIRMED fix).
+- 1.35: `showSettingsDialog` was replaced by `showMenu(kind)` (a bottom sheet built in code, rows from `menuRow`): MENU_VIDEO (player button: download this video, quality, speed, log),
+  MENU_SHORTS (browse button while `isShortsUrl(browseView.url)`: download this Short, Shorts quality, Shorts mode, downloads), MENU_APP (browse button elsewhere: default quality/speed, Shorts mode,
+  Shorts quality while shown, downloads, log). "Shorts mode" is ONE 3-way choice (show / hide / hide + open as videos) mapped onto the prefs `hide_shorts` + `shorts_as_video`.
+  `pickOption` re-opens the sheet via `lastMenu`. The "Download from link" button (string `dl_new`) lives on the Downloads screen. No icons in the rows (no icon assets yet).
 - Error log: launcher-icon long-press shortcut AND a neutral "Error log" button in the quality dialog (player page).
 - Zoom-to-fill (`setZoom` in inject.js): computes the picture size from `videoWidth/videoHeight`, then scales the video's PARENT container with a rule in our own
   stylesheet (`.__tube_zoom{transform:scale(s) !important}`), because YouTube rewrites the <video> element's inline style. If the container scale changes nothing it

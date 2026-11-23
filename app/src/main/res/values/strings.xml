@@ -16,11 +16,6 @@
     <string name="settings_video_quality">Default video quality</string>
     <string name="settings_shorts_quality">Default Shorts quality</string>
     <string name="settings_speed">Default playback speed</string>
-    <string name="settings_download_test">New download</string>
-    <string name="settings_hide_shorts">Hide Shorts</string>
-    <string name="settings_shorts_as_video">Play Shorts as videos</string>
-    <string name="settings_on">On</string>
-    <string name="settings_off">Off</string>
     <string name="dl_title">Download</string>
     <string name="dl_engine_title">Download engine</string>
     <string name="dl_link_hint">YouTube video link</string>
@@ -65,7 +60,7 @@
     <string name="dl_audio_hint">m4a (AAC) plays everywhere. Opus is smaller and just as good, but some older players and cars cannot open it.</string>
     <string name="dl_open_list">Downloads</string>
     <string name="dl_list_title">Downloads</string>
-    <string name="dl_new">New download</string>
+    <string name="dl_new">Download from link</string>
     <string name="dl_clear_finished">Clear finished</string>
     <string name="dl_empty">No downloads yet.</string>
     <string name="dl_state_queued">Waiting in the queue</string>
@@ -80,4 +75,15 @@
     <string name="dl_act_remove">Remove from list</string>
     <string name="dl_open_failed">Could not open the file. It may have been moved or deleted.</string>
     <string name="settings_downloads">Downloads</string>
+    <string name="menu_video_title">This video</string>
+    <string name="menu_app_title">App settings</string>
+    <string name="menu_shorts_title">Shorts</string>
+    <string name="menu_download_video">Download this video</string>
+    <string name="menu_download_short">Download this Short</string>
+    <string name="menu_quality">Quality</string>
+    <string name="menu_speed">Speed</string>
+    <string name="menu_shorts_mode">Shorts</string>
+    <string name="shorts_mode_show">Shown</string>
+    <string name="shorts_mode_hide">Hidden</string>
+    <string name="shorts_mode_video">Hidden, open as videos</string>
 </resources>

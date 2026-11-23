@@ -77,6 +77,11 @@ private fun isAllowedHost(host: String?): Boolean {
     return isYoutubeHost(h) || h == "google.com" || h.endsWith(".google.com")
 }
 
+// which settings sheet is shown (what fits the page the person is on)
+private const val MENU_VIDEO = 0 // inside a video (player page)
+private const val MENU_APP = 1 // home, search, channels...
+private const val MENU_SHORTS = 2 // a Short in the browse page
+
 private fun isShortsUrl(url: String?): Boolean {
     if (url == null) return false
     val u = Uri.parse(url)
@@ -426,7 +431,7 @@ class MainActivity : ComponentActivity() {
         qualityBtn = iconButton(
             R.drawable.ic_quality, getString(R.string.settings_title),
             InsetDrawable(circle, (4 * dp).toInt()), (12 * dp).toInt(), (12 * dp).toInt()
-        ) { showSettingsDialog() }
+        ) { showMenu(MENU_VIDEO) }
         val qlp = FrameLayout.LayoutParams((48 * dp).toInt(), (48 * dp).toInt(), Gravity.TOP or Gravity.RIGHT)
         layer.addView(qualityBtn, qlp)
         return layer
@@ -662,51 +667,159 @@ class MainActivity : ComponentActivity() {
                 onPick(values[which])
                 dialog.dismiss()
                 savePrefsAndApply()
-                showSettingsDialog() // back to the list, now showing the new value
+                showMenu(lastMenu) // back to the sheet, now showing the new value
             }
             .show()
     }
 
-    private fun onOff(v: Boolean): String = getString(if (v) R.string.settings_on else R.string.settings_off)
+    private var lastMenu = MENU_APP
 
-    private fun showSettingsDialog() {
-        val labels = ArrayList<String>()
-        val actions = ArrayList<() -> Unit>()
+    /** One row of a settings sheet: the name, and the current value at the other end. */
+    private fun menuRow(name: String, value: String, onClick: () -> Unit): View {
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.gravity = Gravity.CENTER_VERTICAL
+        val tv = android.util.TypedValue()
+        if (theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)) row.setBackgroundResource(tv.resourceId)
+        val d = resources.displayMetrics.density
+        row.setPadding((20 * d).toInt(), 0, (20 * d).toInt(), 0)
+        row.minimumHeight = (54 * d).toInt()
+        val n = android.widget.TextView(this)
+        n.text = name
+        n.textSize = 16f
+        n.setTextColor(android.graphics.Color.WHITE)
+        row.addView(n, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        if (value.isNotEmpty()) {
+            val v = android.widget.TextView(this)
+            v.text = value
+            v.textSize = 14f
+            v.setTextColor(android.graphics.Color.parseColor("#B0B0B0"))
+            row.addView(v, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        row.setOnClickListener { onClick() }
+        return row
+    }
+
+    private fun shortsModeValue(): String = if (!hideShorts) "show" else if (shortsAsVideo) "video" else "hide"
+
+    /**
+     * The settings sheet (slides up from the bottom). It shows only what fits where the person is:
+     * inside a video: download it, quality, speed; on a Short: download it, Shorts quality, Shorts mode, downloads;
+     * everywhere else: the defaults, Shorts mode, downloads.
+     */
+    private fun showMenu(kind: Int) {
+        lastMenu = kind
+        val dialog = android.app.Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        val d = resources.displayMetrics.density
+        val sheet = LinearLayout(this)
+        sheet.orientation = LinearLayout.VERTICAL
+        val bg = GradientDrawable()
+        bg.setColor(android.graphics.Color.parseColor("#212121"))
+        val r = 20 * d
+        bg.cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
+        sheet.background = bg
+        sheet.setPadding(0, (16 * d).toInt(), 0, (12 * d).toInt())
+
+        val title = android.widget.TextView(this)
+        title.text = getString(
+            when (kind) {
+                MENU_VIDEO -> R.string.menu_video_title
+                MENU_SHORTS -> R.string.menu_shorts_title
+                else -> R.string.menu_app_title
+            }
+        )
+        title.textSize = 18f
+        title.setTypeface(null, android.graphics.Typeface.BOLD)
+        title.setTextColor(android.graphics.Color.WHITE)
+        title.setPadding((20 * d).toInt(), 0, (20 * d).toInt(), (8 * d).toInt())
+        sheet.addView(title)
+
         val qualityLabels = Array(qualityValues.size) { i -> qualityLabel(qualityValues[i]) }
         val speedLabels = Array(speedValues.size) { i -> speedLabel(speedValues[i]) }
-        fun add(label: String, action: () -> Unit) {
-            labels.add(label)
-            actions.add(action)
+        fun row(name: String, value: String, action: () -> Unit) {
+            sheet.addView(menuRow(name, value) {
+                dialog.dismiss()
+                action()
+            })
         }
-        fun toggle(change: () -> Unit) {
-            change()
-            savePrefsAndApply()
-            showSettingsDialog() // back to the list, now showing the new value
-        }
-        add(getString(R.string.settings_video_quality) + ": " + qualityLabel(quality)) {
-            pickOption(R.string.settings_video_quality, qualityLabels, qualityValues, quality) { quality = it }
-        }
-        if (!hideShorts) {
-            add(getString(R.string.settings_shorts_quality) + ": " + qualityLabel(shortsQuality)) {
-                pickOption(R.string.settings_shorts_quality, qualityLabels, qualityValues, shortsQuality) { shortsQuality = it }
+        fun downloadRow(res: Int, url: String?) {
+            row(getString(res), "") {
+                startActivity(Intent(this, DownloadTestActivity::class.java).putExtra("url", url ?: ""))
             }
         }
-        add(getString(R.string.settings_speed) + ": " + speedLabel(speed)) {
-            pickOption(R.string.settings_speed, speedLabels, speedValues, speed) { speed = it }
+        fun qualityRow(res: Int) {
+            row(getString(res), qualityLabel(quality)) {
+                pickOption(res, qualityLabels, qualityValues, quality) { quality = it }
+            }
         }
-        add(getString(R.string.settings_hide_shorts) + ": " + onOff(hideShorts)) { toggle { hideShorts = !hideShorts } }
-        if (hideShorts) {
-            add(getString(R.string.settings_shorts_as_video) + ": " + onOff(shortsAsVideo)) { toggle { shortsAsVideo = !shortsAsVideo } }
+        fun speedRow(res: Int) {
+            row(getString(res), speedLabel(speed)) {
+                pickOption(res, speedLabels, speedValues, speed) { speed = it }
+            }
         }
-        add(getString(R.string.settings_downloads)) { startActivity(Intent(this, DownloadsActivity::class.java)) }
-        add(getString(R.string.settings_download_test)) {
-            startActivity(Intent(this, DownloadTestActivity::class.java).putExtra("url", playerView?.url ?: ""))
+        fun shortsModeRow() {
+            val labels = arrayOf(
+                getString(R.string.shorts_mode_show), getString(R.string.shorts_mode_hide), getString(R.string.shorts_mode_video)
+            )
+            val values = arrayOf("show", "hide", "video")
+            val current = shortsModeValue()
+            row(getString(R.string.menu_shorts_mode), labels[values.indexOf(current)]) {
+                pickOption(R.string.menu_shorts_mode, labels, values, current) {
+                    hideShorts = it != "show"
+                    shortsAsVideo = it == "video"
+                }
+            }
         }
-        add(getString(R.string.shortcut_log)) { startActivity(Intent(this, LogActivity::class.java)) }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.settings_title)
-            .setItems(labels.toTypedArray()) { _, which -> actions[which]() }
-            .show()
+        fun downloadsRow() {
+            DownloadStore.init(applicationContext)
+            val n = DownloadStore.all().size
+            row(getString(R.string.settings_downloads), if (n > 0) n.toString() else "") {
+                startActivity(Intent(this, DownloadsActivity::class.java))
+            }
+        }
+        fun logRow() {
+            row(getString(R.string.shortcut_log), "") { startActivity(Intent(this, LogActivity::class.java)) }
+        }
+
+        when (kind) {
+            MENU_VIDEO -> {
+                downloadRow(R.string.menu_download_video, playerView?.url)
+                qualityRow(R.string.menu_quality)
+                speedRow(R.string.menu_speed)
+                logRow()
+            }
+            MENU_SHORTS -> {
+                downloadRow(R.string.menu_download_short, browseView.url)
+                row(getString(R.string.settings_shorts_quality), qualityLabel(shortsQuality)) {
+                    pickOption(R.string.settings_shorts_quality, qualityLabels, qualityValues, shortsQuality) { shortsQuality = it }
+                }
+                shortsModeRow()
+                downloadsRow()
+            }
+            else -> {
+                qualityRow(R.string.settings_video_quality)
+                speedRow(R.string.settings_speed)
+                shortsModeRow()
+                if (!hideShorts) {
+                    row(getString(R.string.settings_shorts_quality), qualityLabel(shortsQuality)) {
+                        pickOption(R.string.settings_shorts_quality, qualityLabels, qualityValues, shortsQuality) { shortsQuality = it }
+                    }
+                }
+                downloadsRow()
+                logRow()
+            }
+        }
+
+        val scroll = android.widget.ScrollView(this)
+        scroll.addView(sheet)
+        dialog.setContentView(scroll)
+        dialog.window?.let { w ->
+            w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+            w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            w.setGravity(Gravity.BOTTOM)
+        }
+        dialog.show()
     }
 
     /** After returning to the app the video surface can show stale frames (sound is fine): nudge it to redraw. */
@@ -750,7 +863,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleMessage(role: String, msg: String) {
         when {
-            msg == "ui|settings" -> if (role == "browse") showSettingsDialog()
+            msg == "ui|settings" -> if (role == "browse") showMenu(if (isShortsUrl(browseView.url)) MENU_SHORTS else MENU_APP)
             msg.startsWith("share|") -> shareFromPage(msg)
             msg.startsWith("open|") -> if (role == "browse") openVideo(msg.substring(5))
             msg.startsWith("browse|") -> if (role == "player") openInBrowse(msg.substring(7), true)
